@@ -112,6 +112,7 @@ def create_openai_compatible_chat_model(
     max_tokens: int,
     timeout: float | None = 120,
     default_headers: dict[str, str] | None = None,
+    default_reasoning_effort: str | None = None,
 ) -> BaseChatModel | None:
     """Create ``ChatOpenAI`` for providers serving OpenAI-compatible endpoints."""
     if credentials is None:
@@ -128,8 +129,8 @@ def create_openai_compatible_chat_model(
         "default_headers": default_headers,
     }
     reasoning_effort = resolve_reasoning_effort()
-    if reasoning_effort:
-        kwargs["reasoning_effort"] = reasoning_effort
+    if reasoning_effort or default_reasoning_effort:
+        kwargs["reasoning_effort"] = reasoning_effort or default_reasoning_effort
     sampling_parameters = resolve_sampling_parameters(include_seed=True)
     kwargs.update(sampling_parameters)
     chat_model = ChatOpenAI(**kwargs)

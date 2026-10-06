@@ -85,7 +85,10 @@ def test_workflow_budget_starts_before_input_materialization(
     class CapturingHandler:
         primary_file_path = None
 
-        def __init__(self, transitive_budget: object | None = None) -> None:
+        def __init__(
+            self, transitive_budget: object | None = None, *, allow_git_credentials: bool = True
+        ) -> None:
+            assert allow_git_credentials is True
             assert transitive_budget is not None
             assert getattr(transitive_budget, "started_at", None) is not None
             captured.append(transitive_budget)
@@ -110,7 +113,10 @@ def test_transitive_truncation_is_typed_sanitized_and_cleaned(
     cleaned: list[bool] = []
 
     class TruncatedHandler:
-        def __init__(self, transitive_budget: object | None = None) -> None:
+        def __init__(
+            self, transitive_budget: object | None = None, *, allow_git_credentials: bool = True
+        ) -> None:
+            assert allow_git_credentials is True
             assert transitive_budget is not None
 
         def resolve(self, _input_path: str) -> tuple[Path, str]:
@@ -188,3 +194,13 @@ def test_selected_source_identity_from_resolved_git_and_archive_inputs() -> None
         )
         == "repo"
     )
+
+
+def test_resolve_input_preserves_anonymous_git_policy() -> None:
+    with pytest.raises(ValueError, match="unauthenticated HTTPS"):
+        resolve_input(
+            {
+                "input_path": "git@github.com:org/private.git",
+                "allow_git_credentials": False,
+            }
+        )

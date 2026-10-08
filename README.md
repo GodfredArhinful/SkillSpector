@@ -249,6 +249,18 @@ Set `SKILLSPECTOR_REASONING_EFFORT` to override it with `low`, `high`, or `max`.
 The bundled 128,000-token context and 32,000-token output budgets are conservative
 application limits; they do not claim the hosted endpoint's maximum capacity.
 
+Structured output is requested through LangChain's `with_structured_output`.
+The default is client-specific: `ChatOpenAI` uses `json_schema`, while other
+clients may use tool calling.
+`SKILLSPECTOR_STRUCTURED_OUTPUT_METHOD=json_schema|function_calling`
+overrides the method for any provider.
+The method precedence is `SKILLSPECTOR_STRUCTURED_OUTPUT_METHOD`, the provider's
+method hint, an analyzer preference, then the client default. TP4 prefers
+`function_calling` only for provider `openai` and the exact model label
+`azure/anthropic/claude-opus-5`, with reasoning/thinking controls unset; dated
+or suffixed labels and other providers keep their existing behavior. An explicit
+environment override or provider hint still wins when reasoning is configured.
+
 ```bash
 # Stock OpenAI
 export SKILLSPECTOR_PROVIDER=openai

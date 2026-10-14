@@ -342,6 +342,17 @@ def _result_body(result: dict) -> str:
     return report_body
 
 
+def _validate_report_destination(input_path: Path, output: Path | None) -> None:
+    """Reject reports that would overwrite an input, including path aliases."""
+    if (
+        output is not None
+        and input_path.is_file()
+        and output.exists()
+        and output.samefile(input_path)
+    ):
+        raise ValueError("--output points to the input file. Choose a different output path.")
+
+
 def _write_result(
     result: dict[str, object],
     output: Path | None,
@@ -603,6 +614,7 @@ def scan(
             )
             raise typer.Exit(code=2)
         try:
+            _validate_report_destination(Path(input_path), output)
             result = scan_registry(input_path)
             report = json.dumps(result, indent=2)
             if output:
@@ -628,15 +640,7 @@ def scan(
     if not input_path.startswith(("http://", "https://", "git@")):
         try:
             resolved_path = validate_local_input_path(resolved_path)
-            if (
-                output is not None
-                and resolved_path.is_file()
-                and output.exists()
-                and output.samefile(resolved_path)
-            ):
-                raise ValueError(
-                    "--output points to the input file. Choose a different output path."
-                )
+            _validate_report_destination(resolved_path, output)
         except (OSError, ValueError) as e:
             err_console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(code=2) from e

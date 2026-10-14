@@ -1783,7 +1783,7 @@ class TestTP4Fallbacks:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         state = _make_state("mcp_mismatched_skill", use_llm=True)
-        monkeypatch.setattr(LLMAnalyzerBase, "_asleep_before_retry", AsyncMock())
+        monkeypatch.setattr("skillspector.llm_analyzer_base.time.sleep", MagicMock())
         structured_llm = _mock_tp4_structured_llm(
             monkeypatch,
             [{"json": {"is_mismatch": False}} for _ in range(4)],
@@ -1820,12 +1820,12 @@ class TestTP4Fallbacks:
         patch_openai_chat_model()
         calls = []
 
-        async def refuse(*_args, **_kwargs):
+        def refuse(*_args, **_kwargs):
             calls.append(1)
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content="refused"))])
 
-        monkeypatch.setattr(ChatOpenAI, "_agenerate", refuse)
-        monkeypatch.setattr(LLMAnalyzerBase, "_asleep_before_retry", AsyncMock())
+        monkeypatch.setattr(ChatOpenAI, "_generate", refuse)
+        monkeypatch.setattr("skillspector.llm_analyzer_base.time.sleep", MagicMock())
         state = _make_state("mcp_mismatched_skill", use_llm=True)
         state["model_config"] = {"default": "azure/anthropic/claude-opus-5"}
         result = node(state)

@@ -12,7 +12,6 @@ deterministic analyzers.
 from __future__ import annotations
 
 import io
-import re
 import stat
 import struct
 import time
@@ -20,6 +19,8 @@ import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+
+import regex  # type: ignore[import-untyped]
 
 from skillspector.artifacts import (
     ArtifactDisposition,
@@ -398,6 +399,7 @@ _BINARY_EXECUTABLE_MAGICS = (
 )
 
 _TYPESCRIPT_DECLARATION_SUFFIXES = (".d.ts", ".d.cts", ".d.mts")
+_TYPESCRIPT_DECLARATION_TIMEOUT_SECONDS = 0.05
 _TYPESCRIPT_AMBIENT_MEMBER = (
     r"(?:export\s+)?(?:"
     r"interface\s+[A-Za-z_$][\w$]*(?:\s*<[^\r\n{}]*>)?\s*\{[^\r\n{}]*\}|"
@@ -407,7 +409,7 @@ _TYPESCRIPT_AMBIENT_MEMBER = (
     r"class\s+[A-Za-z_$][\w$]*\s*\{[^\r\n{}]*\}"
     r")"
 )
-_TYPESCRIPT_DECLARATION_FILE = re.compile(
+_TYPESCRIPT_DECLARATION_FILE = regex.compile(
     r"\A\s*(?:(?:"
     r"(?:(?:export\s+)?declare\s+(?:const|let|var|function|class)\b[^\r\n;{}]*;)|"
     rf"(?:declare\s+(?:export\s+)?namespace\s+[A-Za-z_$][\w$]*\s*\{{(?:\s*{_TYPESCRIPT_AMBIENT_MEMBER})*\s*\}}\s*;?)|"
@@ -417,7 +419,7 @@ _TYPESCRIPT_DECLARATION_FILE = re.compile(
     r"(?:import\s+type\s+(?:[A-Za-z_$][\w$]*(?:\s*,\s*\{[^{}]*\})?|\{[^{}]*\}|\*\s+as\s+[A-Za-z_$][\w$]*)\s+from\s+[\"'][^\"'\r\n]+[\"']\s*;)|"
     r"(?:export\s*\{[^{}]*\}\s*;?)"
     r")\s*)+\Z",
-    re.DOTALL,
+    regex.DOTALL,
 )
 
 
@@ -482,9 +484,18 @@ def _looks_like_typescript_declaration(path: str, data: bytes, *, complete_conte
     except UnicodeDecodeError:
         return False
     uncommented = _strip_typescript_comments(text)
-    return bool(
-        uncommented and uncommented.strip() and _TYPESCRIPT_DECLARATION_FILE.fullmatch(uncommented)
-    )
+    if not uncommented or not uncommented.strip():
+        return False
+    try:
+        return (
+            _TYPESCRIPT_DECLARATION_FILE.fullmatch(
+                uncommented, timeout=_TYPESCRIPT_DECLARATION_TIMEOUT_SECONDS
+            )
+            is not None
+        )
+    except TimeoutError:
+        # An unproven declaration must remain executable, including on exhaustion.
+        return False
 
 
 def has_binary_executable_magic(data: bytes) -> bool:

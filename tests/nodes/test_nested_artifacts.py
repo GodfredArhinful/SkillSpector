@@ -9,12 +9,15 @@ import io
 import json
 import stat
 import struct
+import subprocess
+import sys
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from skillspector import nested_artifacts
 from skillspector.artifacts import (
     ArtifactDisposition,
     ArtifactRecord,
@@ -144,6 +147,84 @@ def test_ambient_typescript_namespaces_and_modules_are_declarations(path: str) -
     )
 
     assert not is_executable_content(path, declaration, complete_content=True)
+
+
+@pytest.mark.parametrize("path", ["types.d.ts", "types.d.cts", "types.d.mts"])
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        b"export {} \t\n ;\n",
+        b"export interface Options { retries?: number; } \t\n ;\n",
+        b"declare namespace Options {} \t\n ;\n",
+        b'declare module "options" {} \t\n ;\n',
+        b"declare namespace Options { const retries: \t number \t ; }\n",
+    ],
+)
+def test_typescript_declaration_whitespace_controls_stay_inert(
+    path: str, declaration: bytes
+) -> None:
+    assert not is_executable_content(path, declaration, complete_content=True)
+
+
+def test_typescript_declaration_near_misses_are_bounded_and_stay_executable() -> None:
+    padding = " " * 50_000
+    payloads = [
+        "export {}" + padding + "!",
+        "interface Options {}" + padding + "!",
+        "declare namespace Options {}" + padding + "!",
+        'declare module "options" {}' + padding + "!",
+        "declare namespace Options { const retries:" + padding + "! }",
+    ]
+    # Bound the test externally so a regression cannot hang the whole suite.
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import json, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "from skillspector.nested_artifacts import is_executable_content\n"
+            "payloads = json.load(sys.stdin)\n"
+            "for suffix in ('.d.ts', '.d.cts', '.d.mts'):\n"
+            "    for payload in payloads:\n"
+            "        assert is_executable_content(\n"
+            "            'hostile' + suffix, payload.encode(), complete_content=True\n"
+            "        ), (suffix, payload[:60])\n"
+            "print('15 executable near-misses')\n",
+            str(Path(nested_artifacts.__file__).resolve().parents[1]),
+        ],
+        input=json.dumps(payloads),
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=True,
+    )
+    assert completed.stdout.strip() == "15 executable near-misses"
+
+
+@pytest.mark.parametrize("path", ["payload.d.ts", "payload.d.cts", "payload.d.mts"])
+def test_typescript_declaration_timeout_stays_executable_in_hidden_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    class ExhaustedPattern:
+        def fullmatch(self, text: str, *, timeout: float) -> None:
+            assert text == "export {}"
+            assert 0 < timeout <= 0.1
+            raise TimeoutError
+
+    monkeypatch.setattr(nested_artifacts, "_TYPESCRIPT_DECLARATION_FILE", ExhaustedPattern())
+    declaration = b"export {}"
+    assert is_executable_content(path, declaration, complete_content=True)
+    archive_path = tmp_path / ".types.docx.txt"
+    _write_archive(archive_path, _document_members(**{f"word/{path}": declaration}))
+    (tmp_path / "SKILL.md").write_text("# Declaration container\n", encoding="utf-8")
+
+    context = build_context({"skill_path": str(tmp_path)})
+    virtual_path = f".types.docx.txt!/word/{path}"
+    metadata = next(item for item in context["component_metadata"] if item["path"] == virtual_path)
+    assert metadata["executable"] is True
+    assert metadata["concealed_executable"] is True
+    findings = _analyze_concealed_executables(context["component_metadata"])
+    assert any(finding.rule_id == "SC9" and finding.file == virtual_path for finding in findings)
 
 
 @pytest.mark.parametrize(

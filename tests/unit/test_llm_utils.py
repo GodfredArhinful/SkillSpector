@@ -41,8 +41,8 @@ from skillspector.llm_utils import (
     _extract_json_object,
     _invoke_with_usage,
     _resolve_llm_credentials,
-    chat_completion,
     bind_structured_output,
+    chat_completion,
     chat_model_provider_name,
     fetch_model_token_limits,
     get_chat_model,
@@ -978,8 +978,6 @@ class TestStructuredOutputMethod:
     def test_chat_openai_with_tool_choice_disabled_asks_for_the_call(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from skillspector.providers.openai_compatible import OpenAICompatibleProvider
-
         monkeypatch.delenv("SKILLSPECTOR_STRUCTURED_OUTPUT_METHOD", raising=False)
         monkeypatch.delenv("SKILLSPECTOR_MODEL_REGISTRY", raising=False)
         llm, requests = _stub_chat_openai(
@@ -993,7 +991,11 @@ class TestStructuredOutputMethod:
             ],
         )
         chain = bind_structured_output(
-            llm, Verdict, "spark-x2.5", provider=OpenAICompatibleProvider()
+            llm,
+            Verdict,
+            "spark-x2.5",
+            provider=_PlainProvider(),
+            preferred_method="function_calling",
         )
         with pytest.raises(StructuredOutputParseError, match="Verdict"):
             chain.invoke("analyse this")  # type: ignore[attr-defined]

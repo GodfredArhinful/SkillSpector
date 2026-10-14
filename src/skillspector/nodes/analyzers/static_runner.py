@@ -2094,7 +2094,6 @@ def _scan_declared_marker_views(
             )
         return True
 
-
     for owned_start, raw_start in zip(owned_starts, raw_starts, strict=True):
         check_runtime()
         owned_end = min(len(content), owned_start + DECLARED_MARKER_OWNED_CHARS)

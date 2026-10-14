@@ -798,8 +798,7 @@ def dump_baseline(data: dict[str, object], path: str | Path) -> None:
             if os.name == "posix" and os.geteuid() not in {0, destination.st_uid}:
                 raise PermissionError(
                     errno.EACCES,
-                    "Cannot safely replace a baseline owned by another user; "
-                    "write to a new file",
+                    "Cannot safely replace a baseline owned by another user; write to a new file",
                     str(p),
                 )
             # Retain the validated inode's access metadata while competing

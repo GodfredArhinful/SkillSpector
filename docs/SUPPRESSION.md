@@ -131,11 +131,8 @@ files; symlinks and special files are rejected. Replacement requires a writable
 parent directory. On POSIX, new files grant access only to their owner; existing
 ordinary permission bits and ownership are preserved, including group-write access.
 When a non-owner has write access to an existing file, or the owner cannot
-assign the file's group because it is not a member, generation updates its
-validated descriptor in place and preserves its ACLs. This shared-file fallback
-serializes cooperating writers, but readers can see a partial write and an I/O
-failure or interruption can leave a partial baseline. Use an owner-managed output
-when atomic replacement is required.
+preserve the file's group, generation refuses the update without changing the
+existing file. Write to a new file so publication remains atomic.
 
 Every v2 entry must be a mapping with a 64-hex-character `sha256:` hash and a
 non-empty `reason`. `rule_id` and `file` are informational fields for reviewers.

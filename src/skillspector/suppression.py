@@ -726,39 +726,13 @@ def _preserve_baseline_acl(source: int, destination: int) -> None:
         os.setxattr(destination, "system.posix_acl_access", acl)
 
 
-def _write_baseline_in_place(
-    descriptor: int, encoded: bytes, p: Path, opened: os.stat_result
-) -> bool:
-    """Rewrite a validated inode in place, keeping its owner, group, mode and ACLs.
-
-    Returns False, without writing, when *p* no longer names *opened*.
-    """
-    import fcntl
-
-    fcntl.flock(descriptor, fcntl.LOCK_EX)
-    current = p.lstat()
-    if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
-        return False
-    remaining = memoryview(encoded)
-    while remaining:
-        written = os.write(descriptor, remaining)
-        if written <= 0:
-            raise OSError(errno.EIO, "Could not write shared baseline", str(p))
-        remaining = remaining[written:]
-    os.ftruncate(descriptor, len(encoded))
-    os.fsync(descriptor)
-    return True
-
-
 def dump_baseline(data: dict[str, object], path: str | Path) -> None:
     """Validate and write a regular baseline (``.json`` -> JSON).
 
     On POSIX, new files have owner-only permissions. Replacements preserve
     ownership and ordinary permission bits; the old file must be writable.
-    Non-owner writers, and owners that cannot assign the destination's group,
-    update the validated descriptor in place, preserving its permissions and
-    ACLs without requiring chown. That shared-file path is not atomic for
-    readers or crash-safe. Symlinks and special files are rejected.
+    Shared-file updates requiring in-place writes are refused, keeping the old
+    inode untouched. Symlinks and special files are rejected.
     """
     baseline_from_dict(data)
     p = Path(path)
@@ -822,14 +796,12 @@ def dump_baseline(data: dict[str, object], path: str | Path) -> None:
                 continue
             destination = opened
             if os.name == "posix" and os.geteuid() not in {0, destination.st_uid}:
-                # Replacing somebody else's writable file would require chown
-                # and would discard its ACLs. Serialize cooperating shared-file
-                # writers and keep this already validated inode instead.
-                if _write_baseline_in_place(descriptor, encoded, p, opened):
-                    return
-                if final_attempt:
-                    raise ValueError(f"Baseline output changed before writing: {p}")
-                continue
+                raise PermissionError(
+                    errno.EACCES,
+                    "Cannot safely replace a baseline owned by another user; "
+                    "write to a new file",
+                    str(p),
+                )
             # Retain the validated inode's access metadata while competing
             # atomic writers replace the path. There is no need to reopen it.
             access_descriptor = os.dup(descriptor)
@@ -849,16 +821,13 @@ def dump_baseline(data: dict[str, object], path: str | Path) -> None:
                 if (current.st_uid, current.st_gid) != (destination.st_uid, destination.st_gid):
                     try:
                         os.fchown(temporary.fileno(), destination.st_uid, destination.st_gid)
-                    except PermissionError:
-                        if access_descriptor is None:
-                            raise
-                        # A non-root owner cannot assign a group it is not a
-                        # member of. Rewrite the validated inode, keeping its group.
-                        if not _write_baseline_in_place(access_descriptor, encoded, p, destination):
-                            raise ValueError(
-                                f"Baseline output changed before writing: {p}"
-                            ) from None
-                        return
+                    except PermissionError as exc:
+                        raise PermissionError(
+                            errno.EACCES,
+                            "Cannot safely preserve baseline ownership or group; "
+                            "write to a new file",
+                            str(p),
+                        ) from exc
                 # Keep existing group writers/readers. Newly generated files
                 # remain private; replacing one does not revoke shared access.
                 mode = S_IMODE(destination.st_mode) & 0o777

@@ -1,7 +1,5 @@
 # SkillSpector v2.13.0
 
-Release status: candidate; publication pending.
-
 ## Summary
 
 This release selectively backports security hardening, blocking scan fixes, and executable Python support onto v2.12.0. It includes 49 selected PRs; #743 is included through #734. It does not include every change merged into main since v2.12.0.
@@ -12,6 +10,8 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - The Codex CLI analysis provider is disabled because its read-only sandbox permits access to host secrets. Use another supported provider.
 - MCP HTTP listeners are restricted to loopback. Remote deployments require an authenticating proxy.
 - Baseline generation uses atomic replacement. Updates that cannot preserve ownership or group safely are refused; write a new baseline file.
+- Exact-fingerprint baselines are version-bound and must be regenerated after upgrading.
+- Static-only scans do not require an active LLM provider. LLM-enabled scans still reject unknown provider settings.
 - Other provider defaults remain as in v2.12.0. The newer-model default change from #806 and its rollback in #824 are not included.
 
 ## Included changes
@@ -34,7 +34,7 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - [#637](https://github.com/NVIDIA/SkillSpector/pull/637): Makes saved baselines cover every occurrence of a repeated finding, so later scans suppress them consistently.
 - [#655](https://github.com/NVIDIA/SkillSpector/pull/655): Detects bundled Node settings that use the short -r flag to load and run extra code.
 - [#657](https://github.com/NVIDIA/SkillSpector/pull/657): Preserves exact findings in baselines and protects existing baseline files during regeneration.
-- [#691](https://github.com/NVIDIA/SkillSpector/pull/691): Improves structured Opus 5 responses and rejects missing, malformed, or contradictory tool results.
+- [#691](https://github.com/NVIDIA/SkillSpector/pull/691): Improves TP4 responses for the specific OpenAI-provider Opus 5 route and rejects missing, malformed, or contradictory tool results.
 - [#702](https://github.com/NVIDIA/SkillSpector/pull/702): Attaches AI review decisions to the correct findings and distinguishes disagreement from missing or failed reviews.
 - [#721](https://github.com/NVIDIA/SkillSpector/pull/721): Detects sensitive data passed to urllib opener requests, including inline opener calls.
 - [#729](https://github.com/NVIDIA/SkillSpector/pull/729): Rejects scan output that points to the input file, including symbolic or hard links, preventing accidental overwrites.
@@ -76,11 +76,13 @@ This release selectively backports security hardening, blocking scan fixes, and 
 
 ## Integration notes
 
-Selected changes are applied as their merge deltas against v2.12.0. Required shared response-handling and analyzer support is adapted without importing the deferred features. The release PR records the exact adaptations and validation results.
+Selected changes are applied as their merge deltas against v2.12.0. Required shared response-handling, analyzer support, and provider-neutral static-mode helpers are adapted without importing the deferred features. The release PR records the exact adaptations and validation results.
+
+Release review also identified excessive backtracking in TypeScript declaration recognition. Matching now has a time limit; files that cannot be proven inert within it remain eligible for executable analysis.
 
 ## Validation
 
-Validation is pending for this candidate. The release PR will record the tested commit, wheel identity, test results, sample-scan results, and remaining gaps.
+The [release PR](https://github.com/NVIDIA/SkillSpector/pull/833) records the tested commits, wheel identities, source and installed-wheel test results, sample scans, live NVIDIA Build checks, and remaining review gaps. Each result is scoped to its tested revision.
 
 ## Known limitations
 

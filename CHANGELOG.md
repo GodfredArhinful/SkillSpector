@@ -23,7 +23,7 @@
 * Preserves exact findings in baselines and protects existing baseline files during regeneration. (#657)
 * Avoids misleading high-severity warnings on SKILL.md self-references while still reporting missing or ambiguous files. (#661)
 * Accepts ordinary shell variable defaults and assignment values without falsely marking their files as partly scanned. (#686)
-* Improves structured Opus 5 responses and rejects missing, malformed, or contradictory tool results. (#691)
+* Improves TP4 responses for the specific OpenAI-provider Opus 5 route and rejects missing, malformed, or contradictory tool results. (#691)
 * Lowers alerts for simple download pipelines that demonstrably parse incoming data rather than execute it. (#700)
 * Attaches AI review decisions to the correct findings and distinguishes disagreement from missing or failed reviews. (#702)
 * Recognizes safely decodable shell printf escapes without incorrectly marking analysis incomplete. (#704)
@@ -51,6 +51,8 @@
 * Tracks sensitive-data flow by function scope, avoiding collisions between unrelated variable names. (#799)
 * Keeps intentionally excluded files separate from failed analyzer work in coverage reports. (#802)
 * Preserve atomic baseline updates and refuse updates that cannot retain ownership or group safely.
+* Keep static-only scans independent of inactive LLM provider settings while retaining strict provider checks for LLM-enabled scans.
+* Bound TypeScript declaration matching so malformed files cannot stall scans; timed-out checks leave the files eligible for executable analysis.
 * Enable CI and label-gated publishing for the selected v2.13.0 release branch.
 ---
 ### 2.12.0 (Unreleased)

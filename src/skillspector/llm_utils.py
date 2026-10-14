@@ -38,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
+import os
 import threading
 import weakref
 from collections.abc import Coroutine
@@ -356,7 +357,10 @@ class AgentCLIChatModel:
     async def ainvoke(self, prompt: str) -> _AgentCLIMessage:
         return await asyncio.to_thread(self.invoke, prompt)
 
-    def with_structured_output(self, schema: type) -> _StructuredAgentCLIModel:
+    def with_structured_output(
+        self, schema: type, method: str | None = None
+    ) -> _StructuredAgentCLIModel:
+        del method  # Agent CLI adapters always validate the response against the schema.
         return _StructuredAgentCLIModel(self, schema)
 
     def set_timeout(self, timeout: float | None) -> None:

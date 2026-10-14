@@ -5,7 +5,7 @@ name: Publish GitHub Release
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["main", "yashraj/v2.13.0-base"]
     types: [closed]
 
 permissions:

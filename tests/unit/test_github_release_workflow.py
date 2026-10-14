@@ -21,12 +21,12 @@ def test_release_workflow_pins_actions_to_immutable_commits() -> None:
     assert all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", ref) for ref in action_refs)
 
 
-def test_release_workflow_publishes_only_labeled_merged_main_prs() -> None:
+def test_release_workflow_publishes_only_labeled_merged_release_target_prs() -> None:
     """The PR label is the sole release-qualification signal."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "pull_request:" in workflow
-    assert 'branches: ["main"]' in workflow
+    assert 'branches: ["main", "yashraj/v2.13.0-base"]' in workflow
     assert "types: [closed]" in workflow
     assert "github.event.pull_request.merged == true" in workflow
     assert "github.event.pull_request.labels.*.name, 'release:publish'" in workflow

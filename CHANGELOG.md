@@ -42,7 +42,7 @@
 * Redacts short configured secrets from OpenCode’s returned output without corrupting JSON values; separately written report files remain outside this redactor. (#745)
 * Pins the release workflow’s checkout action to a fixed commit so a moving version tag cannot silently change the code it runs. (#746)
 * Switches NVIDIA Build’s default from retired GLM-5.2 to GLM-5.3 while preserving explicit model overrides. (#748)
-* Prevents registry reports from overwriting their input or comparison files. (#758)
+* Prevents registry reports from overwriting their input files. (#758)
 * Keeps the release GitHub token out of Git configuration during dependency installation and builds. (#767)
 * Detects encoded shell payloads that are decoded and executed. (#786)
 * Requires approval for external Pi scan inputs and blocks file-reading YARA includes. (#791)

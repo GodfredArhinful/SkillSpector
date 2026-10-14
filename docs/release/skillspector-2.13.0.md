@@ -50,7 +50,7 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - [#744](https://github.com/NVIDIA/SkillSpector/pull/744): Limits unauthenticated MCP HTTP access to the local machine; remote access requires an authenticating proxy.
 - [#745](https://github.com/NVIDIA/SkillSpector/pull/745): Redacts short configured secrets from OpenCode’s returned output without corrupting JSON values; separately written report files remain outside this redactor.
 - [#746](https://github.com/NVIDIA/SkillSpector/pull/746): Pins the release workflow’s checkout action to a fixed commit so a moving version tag cannot silently change the code it runs.
-- [#758](https://github.com/NVIDIA/SkillSpector/pull/758): Prevents registry reports from overwriting their input or comparison files.
+- [#758](https://github.com/NVIDIA/SkillSpector/pull/758): Prevents registry reports from overwriting their input files.
 - [#767](https://github.com/NVIDIA/SkillSpector/pull/767): Keeps the release GitHub token out of Git configuration during dependency installation and builds.
 - [#786](https://github.com/NVIDIA/SkillSpector/pull/786): Detects encoded shell payloads that are decoded and executed.
 - [#791](https://github.com/NVIDIA/SkillSpector/pull/791): Requires approval for external Pi scan inputs and blocks file-reading YARA includes.

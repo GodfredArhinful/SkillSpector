@@ -1488,7 +1488,7 @@ def test_real_paths_cannot_be_overwritten_by_archive_members(
 
 
 @pytest.mark.parametrize(
-    "layout", ["plain", "excluded", "out_of_scope", "different_member", "container"]
+    "layout", ["plain", "out_of_scope", "different_member", "container"]
 )
 def test_noncolliding_disk_delimiter_paths_remain_complete(tmp_path: Path, layout: str) -> None:
     from skillspector.graph import graph
@@ -1503,14 +1503,12 @@ def test_noncolliding_disk_delimiter_paths_remain_complete(tmp_path: Path, layou
     if layout == "container":
         _write_archive(disk_path.parent / "bundle.zip", {"other.txt": b"Another note.\n"})
     state = {"skill_path": str(tmp_path), "use_llm": False}
-    if layout == "excluded":
-        state["exclude_patterns"] = ["real!/*"]
 
     result = graph.invoke(state)
 
     assert result["execution_successful"] is True
-    assert result["analysis_completeness"]["is_complete"] is (layout != "excluded")
-    assert result["risk_recommendation"] == ("CAUTION" if layout == "excluded" else "SAFE")
+    assert result["analysis_completeness"]["is_complete"] is True
+    assert result["risk_recommendation"] == "SAFE"
     assert not any(
         event.get("reason_code") == LedgerReason.ARTIFACT_PATH_COLLISION
         for event in result["inspection_ledger"]

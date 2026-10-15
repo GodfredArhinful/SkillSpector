@@ -856,7 +856,9 @@ def _inspect_zip_bytes(
             if safe_name in seen_names or virtual_path in result.file_cache:
                 _exception(
                     result,
-                    path=virtual_path,
+                    # A different disk container may already own this path.
+                    # Attribute that skipped copy to its current container.
+                    path=virtual_path if safe_name in seen_names else container_virtual_path,
                     reason=LedgerReason.ARCHIVE_AMBIGUOUS_MEMBER_PATH,
                 )
                 continue

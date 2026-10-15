@@ -2,7 +2,7 @@
 
 ## Summary
 
-This release selectively backports security hardening, blocking scan fixes, and executable Python support onto v2.12.0. It includes 49 selected PRs; #743 is included through #734. It does not include every change merged into main since v2.12.0.
+This release selectively backports security hardening, blocking scan fixes, and executable Python support onto v2.12.0. It includes 51 selected PRs; #743 is included through #734. It does not include every change merged into main since v2.12.0.
 
 ## Compatibility notes
 
@@ -10,6 +10,7 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - The Codex CLI analysis provider is disabled because its read-only sandbox permits access to host secrets. Use another supported provider.
 - MCP HTTP listeners are restricted to loopback. Remote deployments require an authenticating proxy.
 - Baseline generation uses atomic replacement. Updates that cannot preserve ownership or group safely are refused; write a new baseline file.
+- If a real directory ending in `!` collides with an archive-member path, rename that directory to allow both files to be fully inspected.
 - Exact-fingerprint baselines are version-bound and must be regenerated after upgrading.
 - Static-only scans do not require an active LLM provider. LLM-enabled scans still reject unknown provider settings.
 - Other provider defaults remain as in v2.12.0. The newer-model default change from #806 and its rollback in #824 are not included.
@@ -37,6 +38,7 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - [#691](https://github.com/NVIDIA/SkillSpector/pull/691): Improves TP4 responses for the specific OpenAI-provider Opus 5 route and rejects missing, malformed, or contradictory tool results.
 - [#702](https://github.com/NVIDIA/SkillSpector/pull/702): Attaches AI review decisions to the correct findings and distinguishes disagreement from missing or failed reviews.
 - [#721](https://github.com/NVIDIA/SkillSpector/pull/721): Detects sensitive data passed to urllib opener requests, including inline opener calls.
+- [#725](https://github.com/NVIDIA/SkillSpector/pull/725): Displays untrusted names, filenames and findings literally in terminal reports, preventing markup crashes and spoofing.
 - [#729](https://github.com/NVIDIA/SkillSpector/pull/729): Rejects scan output that points to the input file, including symbolic or hard links, preventing accidental overwrites.
 - [#733](https://github.com/NVIDIA/SkillSpector/pull/733): Prevents untrusted names and findings from inserting fake headings, rows or HTML into batch Markdown reports.
 - [#734](https://github.com/NVIDIA/SkillSpector/pull/734): Displays untrusted skill names and errors literally in batch terminals so markup and control characters cannot spoof the output.
@@ -55,6 +57,7 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - [#786](https://github.com/NVIDIA/SkillSpector/pull/786): Detects encoded shell payloads that are decoded and executed.
 - [#791](https://github.com/NVIDIA/SkillSpector/pull/791): Requires approval for external Pi scan inputs and blocks file-reading YARA includes.
 - [#792](https://github.com/NVIDIA/SkillSpector/pull/792): Separates local and referenced-content caches so baseline suppression cannot use the wrong file.
+- [#793](https://github.com/NVIDIA/SkillSpector/pull/793): Prevents real disk paths from being overwritten by archive members with the same virtual path. Collisions retain the real content and report failed coverage.
 - [#796](https://github.com/NVIDIA/SkillSpector/pull/796): Reports malformed LLM responses as incomplete analysis instead of successful empty results.
 
 ### Blocking and regression fixes

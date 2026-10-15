@@ -1487,9 +1487,7 @@ def test_real_paths_cannot_be_overwritten_by_archive_members(
     assert result["risk_recommendation"] != "SAFE"
 
 
-@pytest.mark.parametrize(
-    "layout", ["plain", "out_of_scope", "different_member", "container"]
-)
+@pytest.mark.parametrize("layout", ["plain", "out_of_scope", "different_member", "container"])
 def test_noncolliding_disk_delimiter_paths_remain_complete(tmp_path: Path, layout: str) -> None:
     from skillspector.graph import graph
 

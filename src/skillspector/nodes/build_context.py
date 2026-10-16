@@ -3366,14 +3366,11 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
             " Distinct descendant members may still be analyzed."
         )
         prework_events.append(event)
+    disk_container_event_ids = {id(event) for event in nested.disk_container_events}
     for event in nested.ledger_events:
         path = event["path"]
         if path in reserved_paths:
-            # These reasons are emitted only for top-level disk inputs.
-            if path in nested.outer_metadata and event.get("reason_code") in {
-                LedgerReason.ARCHIVE_FORMAT_MISMATCH,
-                LedgerReason.ARCHIVE_MALFORMED,
-            }:
+            if id(event) in disk_container_event_ids:
                 continue
             event["path"] = member_containers.get(path, path.rsplit("!/", 1)[0])
             event["work_id"] = inspection_work_id(

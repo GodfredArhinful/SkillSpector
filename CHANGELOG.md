@@ -53,6 +53,7 @@
 * Preserve atomic baseline updates and refuse updates that cannot retain ownership or group safely.
 * Keep static-only scans independent of inactive LLM provider settings while retaining strict provider checks for LLM-enabled scans.
 * Bound TypeScript declaration matching so malformed files cannot stall scans; timed-out checks leave the files eligible for executable analysis.
+* Counts only the bytecode walk’s own CPU time toward its processing limit, while retaining the overall scan deadline. Waiting for other analyzers no longer makes clean scans incomplete. (#828)
 * Enable CI and label-gated publishing for the selected v2.13.0 release branch.
 ---
 ### 2.12.0 (Unreleased)

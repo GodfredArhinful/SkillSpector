@@ -614,6 +614,12 @@ def get_chat_model(
     """
     provider = get_active_provider()
     if has_cli_capability(provider):
+        # Every CLI call is a full agent session on the user's plan. Warn here,
+        # before the analyzers fan out; the scan path only probes availability
+        # from the report node, after the calls have run.
+        warn_session_cost = getattr(provider, "warn_session_cost", None)
+        if callable(warn_session_cost):
+            warn_session_cost()
         resolved_model = model or provider.resolve_model()
         chat_model = AgentCLIChatModel(
             provider,

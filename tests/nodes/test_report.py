@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 
 import pytest
+from markdown_it import MarkdownIt
 
 from skillspector.models import Finding
 from skillspector.nodes.report import (
@@ -674,10 +676,60 @@ class TestReportNode:
 
         assert "| Execution | successful |" in body
         assert "### Ledger Exceptions" in body
-        assert "llm_structured_response_invalid" in body
+        assert "llm_structured_response_invalid" in MarkdownIt().render(body)
         assert "`SKILL.md`" in body
         assert "### Analyzer Statuses" in body
         assert "### Limitations" in body
+
+    @pytest.mark.parametrize("output_format", ["markdown", "terminal"])
+    def test_report_labels_rule_set_exception_as_rule_set_not_file(
+        self, output_format: str
+    ) -> None:
+        """A rule-set row must not read like a file row that shares its path label."""
+        state: SkillspectorState = {
+            "filtered_findings": [],
+            "component_metadata": [],
+            "has_executable_scripts": False,
+            "manifest": {},
+            "skill_path": None,
+            "output_format": output_format,
+            "execution_successful": True,
+            "analysis_completeness": {
+                "coverage_percent": 100.0,
+                "fully_inspected_files": 1,
+                "partially_inspected_files": 0,
+                "entirely_uninspected_files": 0,
+                "is_complete": False,
+                "execution_successful": True,
+                "ledger_exceptions": [
+                    {
+                        "reason_code": "read_error",
+                        "path": "yara_rules",
+                        "message": "Rule dropped.",
+                        "fatal": False,
+                        "scope": "rule_set",
+                    },
+                    {
+                        "reason_code": "read_error",
+                        "path": "yara_rules",
+                        "message": "File unreadable.",
+                        "fatal": False,
+                    },
+                ],
+                "scope_exclusions": [],
+                "analyzer_statuses": [],
+                "limitations": [],
+            },
+        }
+
+        body = report(state)["report_body"]
+
+        if output_format == "markdown":
+            assert r"| read\_error | rule set `yara_rules` | Rule dropped\. |" in body
+            assert r"| read\_error | `yara_rules` | File unreadable\. |" in body
+        else:
+            assert "read_error rule set yara_rules: Rule dropped." in body
+            assert "read_error yara_rules: File unreadable." in body
 
     def test_report_output_format_terminal(self) -> None:
         """output_format terminal produces Rich-formatted output."""
@@ -807,7 +859,12 @@ class TestReportNode:
             row = json.loads(result["report_body"])["runs"][0]["results"][0]
             assert row["properties"]["evidence"] == finding.evidence
         else:
-            assert "outer_path" in result["report_body"]
+            rendered = (
+                MarkdownIt().render(result["report_body"])
+                if output_format == "markdown"
+                else result["report_body"]
+            )
+            assert "outer_path" in rendered
             assert "archive.docx" in result["report_body"]
 
     @pytest.mark.parametrize("output_format", ["terminal", "json", "markdown", "sarif"])
@@ -846,7 +903,8 @@ class TestReportNode:
 
         body = report(state)["report_body"]
 
-        assert "archive_member_limit" in body
+        rendered = MarkdownIt().render(body) if output_format == "markdown" else body
+        assert "archive_member_limit" in rendered
         assert "outer.zip!/nested.zip" in body
 
     def test_report_default_output_format_is_sarif(self) -> None:
@@ -1252,6 +1310,8 @@ def test_report_shares_record_budget_with_suppressed_occurrences(
     elif output_format == "sarif":
         assert len(json.loads(body)["runs"][0]["results"]) <= 4
     else:
+        if output_format == "markdown":
+            body = MarkdownIt().render(body)
         assert body.count("ACTIVE_BOUND") == 2
         assert body.count("SUPPRESSED_BOUND") == 1
 
@@ -2465,3 +2525,59 @@ def test_report_sarif_preserves_high_vs_critical_severity() -> None:
     assert by_rule["R2"]["level"] == "error"
     assert by_rule["R1"]["properties"]["severity"] == "HIGH"
     assert by_rule["R2"]["properties"]["severity"] == "CRITICAL"
+
+
+def test_report_retains_exact_active_findings_before_compaction_and_output_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = Finding(
+        rule_id="TM1",
+        message="destructive command",
+        file="SKILL.md",
+        start_line=1,
+        matched_text="rm -rf /",
+        confidence=0.8,
+        context="first context",
+        code_snippet="first snippet",
+    )
+    repeated = replace(
+        first,
+        finding_id="repeated",
+        start_line=4,
+        confidence=0.7,
+        context="second context",
+        code_snippet="second snippet",
+    )
+    other_file = replace(
+        first,
+        finding_id="other-file",
+        file="scripts/check.sh",
+        confidence=0.9,
+        context="third context",
+        code_snippet="third snippet",
+    )
+    findings = [first, repeated, other_file]
+    monkeypatch.setattr("skillspector.nodes.report.MAX_FINDING_OUTPUT_RECORDS", 1)
+    result = report({"findings": findings, "use_llm": False, "output_format": "json"})
+
+    assert len(result["filtered_findings"]) == 1
+    assert len(result["filtered_findings"][0].occurrences) == 1
+    assert result["active_findings"] == findings
+
+
+def test_report_active_findings_are_sanitized_and_exclude_suppressed() -> None:
+    kept = _finding("TM1", message="destructive\x1b[31m command")
+    suppressed = _finding("PE3")
+    result = report(
+        {
+            "findings": [kept, suppressed],
+            "use_llm": False,
+            "output_format": "json",
+            "baseline": Baseline(rules=[SuppressionRule(rule_id="PE3", reason="accepted")]),
+        }
+    )
+
+    assert len(result["active_findings"]) == 1
+    assert result["active_findings"][0].finding_id == kept.finding_id
+    assert result["active_findings"][0].message == "destructive command"
+    assert kept.message == "destructive\x1b[31m command"

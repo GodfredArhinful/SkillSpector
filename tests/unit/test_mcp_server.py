@@ -1036,6 +1036,26 @@ def test_is_local_target_fails_closed_when_home_cannot_be_resolved(
     assert mcp_server._is_local_target("~nosuchuser/skill") is True
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        "git@github.com:org/private.git",
+        "ssh://git@github.com/org/private.git",
+        "git+ssh://git@github.com/org/private.git",
+        "https://token@github.com/org/private.git",
+        "https://user:password@github.com/org/private.git",
+    ],
+)
+async def test_http_rejects_credentialed_targets_before_graph(
+    target: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    graph_ainvoke = AsyncMock()
+    monkeypatch.setattr(mcp_server.graph, "ainvoke", graph_ainvoke)
+    with pytest.raises(ValueError, match="unauthenticated HTTPS"):
+        await run_scan(target, allow_local_targets=False)
+    graph_ainvoke.assert_not_awaited()
+
+
 async def test_run_scan_allows_remote_target_when_local_targets_disallowed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1058,6 +1078,7 @@ async def test_run_scan_allows_remote_target_when_local_targets_disallowed(
     assert result["target"] == target
     assert graph_ainvoke.await_count == 1
     assert graph_ainvoke.await_args.args[0]["input_path"] == target
+    assert graph_ainvoke.await_args.args[0]["allow_git_credentials"] is False
 
 
 async def test_run_scan_keeps_default_local_target_compatibility(
@@ -1081,6 +1102,7 @@ async def test_run_scan_keeps_default_local_target_compatibility(
     assert result["target"] == str(tmp_path)
     assert graph_ainvoke.await_count == 1
     assert graph_ainvoke.await_args.args[0]["input_path"] == str(tmp_path)
+    assert graph_ainvoke.await_args.args[0]["allow_git_credentials"] is True
 
 
 @pytest.mark.parametrize(
@@ -1105,15 +1127,57 @@ def test_run_passes_transport_local_target_policy(
 
     monkeypatch.setattr(mcp_server, "build_server", fake_build_server)
 
-    mcp_server.run(transport=transport, host="0.0.0.0", port=9000)
+    mcp_server.run(transport=transport, host="127.0.0.1", port=9000)
 
     assert captured["allow_local_targets"] is expected_allow_local_targets
     if transport == "http":
-        assert server.settings.host == "0.0.0.0"
+        assert server.settings.host == "127.0.0.1"
         assert server.settings.port == 9000
         server.run.assert_called_once_with(transport="streamable-http")
     else:
         server.run.assert_called_once_with(transport="stdio")
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "0.0.0.0",
+        "::",
+        "10.0.0.1",
+        "192.0.2.1",
+        "example.com",
+        "127.0.0.1.example.com",
+        "127.1",
+        "127.3.2.1",
+        "::1%lo",
+        "2130706433",
+        "",
+    ],
+)
+def test_http_rejects_non_loopback_before_constructing_server(host, monkeypatch):
+    build = MagicMock()
+    monkeypatch.setattr(mcp_server, "build_server", build)
+    with pytest.raises(ValueError, match="must bind to a loopback IP"):
+        mcp_server.run(transport="http", host=host)
+    build.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "host, bound",
+    [
+        ("127.0.0.1", "127.0.0.1"),
+        ("0:0:0:0:0:0:0:1", "::1"),
+        ("::1", "::1"),
+        ("localhost", "127.0.0.1"),
+        ("LOCALHOST", "127.0.0.1"),
+    ],
+)
+def test_http_accepts_only_loopback_bindings(host, bound, monkeypatch):
+    server = SimpleNamespace(settings=SimpleNamespace(host=None, port=None), run=MagicMock())
+    monkeypatch.setattr(mcp_server, "build_server", lambda **_: server)
+    mcp_server.run(transport="http", host=host, port=9000)
+    assert server.settings.host == bound
+    server.run.assert_called_once_with(transport="streamable-http")
 
 
 def test_run_rejects_unknown_transport_without_allowing_local_targets(

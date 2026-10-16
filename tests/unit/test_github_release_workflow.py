@@ -5,18 +5,28 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 
-def test_release_workflow_publishes_only_labeled_merged_main_prs() -> None:
+def test_release_workflow_pins_actions_to_immutable_commits() -> None:
+    """Actions with release write permissions must not follow mutable tags."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    action_refs = re.findall(r"\buses:\s*([^\s#]+)", workflow)
+
+    assert action_refs
+    assert all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", ref) for ref in action_refs)
+
+
+def test_release_workflow_publishes_only_labeled_merged_release_target_prs() -> None:
     """The PR label is the sole release-qualification signal."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "pull_request:" in workflow
-    assert 'branches: ["main"]' in workflow
+    assert 'branches: ["main", "yashraj/v2.13.0-base"]' in workflow
     assert "types: [closed]" in workflow
     assert "github.event.pull_request.merged == true" in workflow
     assert "github.event.pull_request.labels.*.name, 'release:publish'" in workflow
@@ -29,6 +39,7 @@ def test_release_workflow_tags_the_merged_pr_commit() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "ref: ${{ github.event.pull_request.merge_commit_sha }}" in workflow
+    assert "persist-credentials: false" in workflow
     assert '--target "${{ github.event.pull_request.merge_commit_sha }}"' in workflow
 
 
@@ -46,7 +57,7 @@ def test_release_workflow_uses_skillspectors_locked_uv_environment() -> None:
     """Release artifacts are built with the repository's pinned tooling."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5" in workflow
+    assert "astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2" in workflow
     assert 'UV_VERSION: "0.10.10"' in workflow
     assert 'version: "${{ env.UV_VERSION }}"' in workflow
     assert "cache-dependency-glob: uv.lock" in workflow

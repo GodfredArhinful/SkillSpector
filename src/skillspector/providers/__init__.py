@@ -31,7 +31,7 @@ Selection happens via the ``SKILLSPECTOR_PROVIDER`` env var:
     azure_openai      → AzureOpenAIProvider          (Azure OpenAI Service)
     openai_compatible → OpenAICompatibleProvider     (Groq, Together AI, Mistral, etc.)
     claude_cli        → ClaudeCLIProvider            (local ``claude`` binary, no API key)
-    codex_cli         → CodexCLIProvider             (local ``codex`` binary, no API key)
+    codex_cli         → CodexCLIProvider             (registered but disabled: host-file reads)
     gemini_cli        → GeminiCLIProvider            (local ``gemini`` binary, no API key)
     opencode_cli      → OpencodeCLIProvider          (local ``opencode`` binary, no API key)
     antigravity_cli   → AntigravityCLIProvider       (local ``agy`` binary; registered
@@ -76,6 +76,10 @@ _INJECTED_PROVIDER: ContextVar[LLMProvider | None] = ContextVar(
     "skillspector_injected_provider",
     default=None,
 )
+
+
+class UnknownProviderError(ValueError):
+    """The configured provider name does not identify a supported provider."""
 
 
 def raise_no_llm_api_key_configured() -> NoReturn:
@@ -166,7 +170,7 @@ def _select_active_provider() -> LLMProvider:
         except ImportError:
             return NvBuildProvider()
 
-    raise ValueError(
+    raise UnknownProviderError(
         f"Unknown SKILLSPECTOR_PROVIDER: {name!r}. "
         "Expected one of: openai, anthropic, anthropic_proxy, bedrock, nv_build, "
         "ollama, azure_openai, openai_compatible, "
@@ -309,6 +313,7 @@ __all__ = [
     "LLMProvider",
     "ModelMetadataProvider",
     "NO_LLM_API_KEY_MESSAGE",
+    "UnknownProviderError",
     "create_chat_model",
     "create_chat_model_with_provider",
     "get_active_provider",

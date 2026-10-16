@@ -235,14 +235,31 @@ inference gateways.
 | `anthropic` | `ANTHROPIC_API_KEY` | api.anthropic.com | `claude-opus-4-6` |
 | `anthropic_proxy` | `ANTHROPIC_PROXY_API_KEY` + `ANTHROPIC_PROXY_ENDPOINT_URL` | Any Vertex-style raw-predict proxy | `claude-sonnet-4-6` |
 | `bedrock` | `AWS_PROFILE` (optional) + `AWS_REGION` — SigV4 via boto3 | AWS Bedrock Runtime | `us.anthropic.claude-sonnet-4-6-20250915-v1:0` |
-| `nv_build` | `NVIDIA_INFERENCE_KEY` | build.nvidia.com | `z-ai/glm-5.2` |
+| `nv_build` | `NVIDIA_INFERENCE_KEY` | build.nvidia.com | `z-ai/glm-5.3` |
 | `ollama` | _(none)_ | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) | `llama3.1:8b` |
 | `azure_openai` | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` | Azure OpenAI Service | `gpt-4o` (deployment defaults to the model label) |
 | `openai_compatible` | `SKILLSPECTOR_COMPAT_API_KEY` + `SKILLSPECTOR_COMPAT_BASE_URL` | Any OpenAI-compatible endpoint | `llama-3.1-70b-versatile` |
 | `claude_cli` | _(none — uses local CLI auth)_ | local `claude` binary | local Claude runtime fallback, or `SKILLSPECTOR_MODEL` |
-| `codex_cli` | _(none — uses local CLI auth)_ | local `codex` binary | local Codex runtime fallback, or `SKILLSPECTOR_MODEL` |
+| `codex_cli` | Disabled | Registered for compatibility; its read-only sandbox permits host-file reads | Use an HTTP API provider or another supported CLI provider |
 | `gemini_cli` | _(none — uses local CLI auth)_ | local `gemini` binary | local Gemini runtime fallback, or `SKILLSPECTOR_MODEL` |
 | `opencode_cli` | _(none — uses local CLI auth)_ | local `opencode` 1.18.31 binary | local OpenCode runtime fallback, or `SKILLSPECTOR_MODEL` |
+
+For NVIDIA Build's `z-ai/glm-5.3`, SkillSpector requests `high` reasoning effort.
+Set `SKILLSPECTOR_REASONING_EFFORT` to override it with `low`, `high`, or `max`.
+The bundled 128,000-token context and 32,000-token output budgets are conservative
+application limits; they do not claim the hosted endpoint's maximum capacity.
+
+Structured output is requested through LangChain's `with_structured_output`.
+The default is client-specific: `ChatOpenAI` uses `json_schema`, while other
+clients may use tool calling.
+`SKILLSPECTOR_STRUCTURED_OUTPUT_METHOD=json_schema|function_calling`
+overrides the method for any provider.
+The method precedence is `SKILLSPECTOR_STRUCTURED_OUTPUT_METHOD`, the provider's
+method hint, an analyzer preference, then the client default. TP4 prefers
+`function_calling` only for provider `openai` and the exact model label
+`azure/anthropic/claude-opus-5`, with reasoning/thinking controls unset; dated
+or suffixed labels and other providers keep their existing behavior. An explicit
+environment override or provider hint still wins when reasoning is configured.
 
 ```bash
 # Stock OpenAI
@@ -286,11 +303,6 @@ export SKILLSPECTOR_PROVIDER=claude_cli
 # export SKILLSPECTOR_MODEL=claude-sonnet-4-6
 skillspector scan ./my-skill/
 
-# Local Codex CLI — no API key; uses your existing `codex login` session
-# Requires: codex CLI installed and authenticated
-export SKILLSPECTOR_PROVIDER=codex_cli
-skillspector scan ./my-skill/
-
 # Gemini (via OpenAI compatibility layer)
 export SKILLSPECTOR_PROVIDER=openai
 export OPENAI_API_KEY="YOUR_GEMINI_API_KEY"
@@ -329,8 +341,8 @@ skillspector scan ./my-skill/ --no-llm
 ### MCP Server
 
 Run SkillSpector as a [Model Context Protocol](https://modelcontextprotocol.io)
-server so any MCP-capable agent (Claude Code, Codex CLI, Gemini CLI) or remote
-runtime can call scanning as a tool and **gate skill/MCP installs on the
+server so local MCP-capable agents (Claude Code, Codex CLI, Gemini CLI)
+can call scanning as a tool and **gate skill/MCP installs on the
 result** — turning SkillSpector into a runtime guardrail instead of an
 out-of-band audit step.
 
@@ -343,7 +355,7 @@ uv tool install --force 'skillspector[mcp] @ git+https://github.com/NVIDIA/skill
 # FastMCP stdio transport for local CLI agents
 skillspector mcp
 
-# streamable HTTP/SSE transport for remote / A2A callers
+# Streamable HTTP transport on a local loopback interface
 skillspector mcp --transport http --host 127.0.0.1 --port 8000
 ```
 
@@ -368,14 +380,21 @@ claude mcp add skillspector -- skillspector mcp
 > **Security — HTTP transport trust model**
 >
 > The HTTP transport ships **without authentication**. Any caller that can
-> reach the port can invoke `scan_skill`. Over stdio or `127.0.0.1` this is
-> the same trust boundary as the CLI. If you bind to a routable interface:
+> reach the port can invoke `scan_skill`. HTTP bindings are restricted to
+> loopback IPs (`127.0.0.1` or `::1`); `localhost` binds to `127.0.0.1` without
+> DNS resolution. Wildcard, routable and other hostname bindings are rejected.
 >
-> - Sit the server behind an authenticating reverse proxy (e.g. nginx + mTLS)
->   before exposing it externally.
+> - For remote access, put an authenticating reverse proxy (e.g. nginx + mTLS)
+>   in front of the loopback listener.
 > - Local paths and `file://` URLs are **automatically rejected** over HTTP to
 >   prevent unauthenticated callers from reading arbitrary host files. Only
 >   remote Git and `.zip` URLs are accepted.
+>
+> HTTP scans accept only credential-free `https://` targets. Git scans never use
+> the server's Git login or Git config. If a proxy or custom CA is needed, set
+> `HTTPS_PROXY`, `NO_PROXY` or `GIT_SSL_CAINFO` in the server environment.
+> Use stdio or the CLI for private repositories. Git redirects are rejected;
+> use the current repository URL after a rename or transfer.
 
 ## Vulnerability Patterns
 
@@ -606,11 +625,11 @@ Issues (2)
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `SKILLSPECTOR_PROVIDER` | Active LLM provider: `openai`, `anthropic`, `anthropic_proxy`, `bedrock`, `nv_build`, `ollama`, `azure_openai`, `openai_compatible`, `claude_cli`, `codex_cli`, `gemini_cli`, or `opencode_cli`. Hosted providers use bundled `model_registry.yaml` defaults; CLI providers fall back to the local runtime's default model unless `SKILLSPECTOR_MODEL` is set. Defaults to `nv_build`. | Optional |
+| `SKILLSPECTOR_PROVIDER` | Active LLM provider: `openai`, `anthropic`, `anthropic_proxy`, `bedrock`, `nv_build`, `ollama`, `azure_openai`, `openai_compatible`, `claude_cli`, `gemini_cli`, or `opencode_cli`. Hosted providers use bundled `model_registry.yaml` defaults; CLI providers fall back to the local runtime's default model unless `SKILLSPECTOR_MODEL` is set. Defaults to `nv_build`. | Optional |
 | `NVIDIA_INFERENCE_KEY` | Credential for the `nv_build` provider (build.nvidia.com). | Required for LLM analysis when `SKILLSPECTOR_PROVIDER=nv_build` |
 | `OPENAI_API_KEY` | Credential for the OpenAI provider (`SKILLSPECTOR_PROVIDER=openai`). Also serves as the tier-2 fallback in the credential waterfall when the active provider returns no credentials. | Required for LLM analysis when `SKILLSPECTOR_PROVIDER=openai` |
 | `OPENAI_BASE_URL` | Override the OpenAI endpoint (e.g. point at Ollama). | Optional |
-| `SKILLSPECTOR_REASONING_EFFORT` | Optional provider- and model-dependent reasoning-effort setting. Non-empty values are trimmed and passed through unchanged; unset or blank preserves provider-default behavior. | Optional |
+| `SKILLSPECTOR_REASONING_EFFORT` | Optional provider- and model-dependent reasoning-effort setting. Non-empty values are trimmed and passed through unchanged. When unset or blank, SkillSpector sends `high` for `nv_build` with `z-ai/glm-5.3`; other provider/model combinations keep their endpoint defaults. | Optional |
 | `SKILLSPECTOR_OUTPUT_LANGUAGE` | Short, single-line language label (letters, numbers, spaces, `_`, or `-`; maximum 64 characters) for human-readable LLM finding text such as messages, explanations, and remediation. Rule IDs, severity values, paths, code, and other machine-readable values remain unchanged. Unset, blank, or invalid values preserve the default output language. | Optional |
 | `SKILLSPECTOR_TEMPERATURE` | Optional sampling temperature from `0` to `1` for hosted providers. Unset or blank preserves the provider default. Lower values can reduce run-to-run variation but do not guarantee identical output. | Optional |
 | `SKILLSPECTOR_SEED` | Optional integer sampling seed for OpenAI-compatible and Azure OpenAI providers. Other hosted providers and CLI providers do not receive it. Provider support remains model-dependent. | Optional |
@@ -633,7 +652,9 @@ Issues (2)
 | `SKILLSPECTOR_MODEL_REGISTRY` | Override the bundled per-provider YAML registry (`src/skillspector/providers/<provider>/model_registry.yaml`) with a custom path. | Optional |
 | `SKILLSPECTOR_LOG_LEVEL` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `WARNING`). | Optional |
 
-> **CLI providers** (`claude_cli`, `codex_cli`, `gemini_cli`, `opencode_cli`): No API key is needed. Authentication is managed entirely by the agent CLI's own login session. SkillSpector never reads or forwards API keys when these providers are active. The subprocess is run with capabilities restricted, and untrusted skill content is delivered only via stdin.
+> **Disabled provider:** `codex_cli` remains registered but cannot run LLM analysis because its read-only sandbox allows host-file reads. Existing users should select an HTTP API provider or another supported CLI provider.
+
+> **CLI providers** (`claude_cli`, `gemini_cli`, `opencode_cli`): No API key is needed. Authentication is managed entirely by the agent CLI's own login session. SkillSpector never reads or forwards API keys when these providers are active. The subprocess is run with capabilities restricted, and untrusted skill content is delivered only via stdin.
 >
 > `opencode_cli` currently fails closed unless the installed OpenCode version is exactly `1.18.31`, the version whose configuration precedence and deny-all semantics are verified by this release.
 
@@ -789,13 +810,15 @@ SkillSpector uses a two-stage detection pipeline:
 - High recall (catches most issues)
 - Moderate precision (some false positives)
 
-A valid, root-level OpenSSF Model Signing signature (`skill.oms.sig`) is retained in the
-component inventory as type `oms_signature`, but excluded from static and LLM content analysis.
-OMS bundles necessarily contain long base64-encoded payload, signature, and certificate fields;
-generic obfuscated-code checks can otherwise misclassify those fields as hidden executable content.
-The recognizer checks the minimal OMS DSSE/in-toto structure; it does not verify the signature,
-certificate chain, transparency-log entry, or signer identity. Invalid or unrecognized signature
-files are scanned normally.
+OpenSSF Model Signing / DSSE bundles remain in content analysis, regardless of
+filename. Static and LLM analyzers inspect decoded JSON payloads, readable DER
+certificate/signature content, and all unknown wrapper fields. Strictly parsed
+binary fields are projected rather than treated as executable base64; canonical
+bytes remain available to YARA and fingerprints. Unsupported encodings (including
+environments without the optional `cryptography` dependency) retain raw fields
+and produce an explicit incomplete-analysis warning. Findings in decoded content
+point to the original bundle and label their projection in evidence. None of this
+verifies signatures, certificate chains, transparency logs, or signer identity.
 
 ### Stage 2: LLM Semantic Analysis (Optional)
 - Evaluates context and intent
@@ -821,7 +844,7 @@ The tool requires outbound HTTPS access to `api.osv.dev` for live vulnerability 
 SkillSpector is defense-in-depth, not a sandbox. Know what it does and does not do before relying on it:
 
 - **It never executes the scanned skill.** All analysis is static (regex, Python AST, YARA) plus optional LLM evaluation of file *contents* — the skill's code is never run.
-- **LLM analysis sends analyzer-eligible file contents to the configured provider.** When LLM analysis is enabled (the default), file contents are sent to the active `SKILLSPECTOR_PROVIDER` endpoint. Recognized OMS signature files are excluded. Use `--no-llm` to keep contents local (static analysis only).
+- **LLM analysis sends analyzer-eligible file contents to the configured provider.** When LLM analysis is enabled (the default), file contents are sent to the active `SKILLSPECTOR_PROVIDER` endpoint. DSSE payloads and readable signing metadata are included. Use `--no-llm` to keep contents local (static analysis only).
 - **SC4 sends dependency names to OSV.dev.** The supply-chain check queries [OSV.dev](https://osv.dev) with the package names and versions the skill declares, to look up known CVEs. This is fundamental to the check and runs even with `--no-llm`. It sends dependency coordinates (not file contents), requires no API key, and falls back to a bundled list when OSV.dev is unreachable.
 - **It does not sandbox the host.** SkillSpector flags risky patterns *before* you install a skill; it does not contain or isolate a skill you choose to install anyway.
 

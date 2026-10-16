@@ -2744,6 +2744,92 @@ class TestSupplyChainShellDecoding:
     @pytest.mark.parametrize(
         "command",
         [
+            pytest.param(f"echo {_SHELL_FETCH_B64} | base64 -d | sha256sum", id="base64"),
+            pytest.param(f"echo {_SHELL_FETCH_B32} | base32 -d | sha256sum", id="base32"),
+            pytest.param(f"echo {_SHELL_FETCH_HEX} | xxd -r -p | sha256sum", id="hex"),
+            pytest.param(
+                f"echo {_SHELL_FETCH_B64} | openssl base64 -d -A | sha256sum", id="openssl"
+            ),
+            pytest.param(f"base64 -d <<< '{_SHELL_FETCH_B64}' | sha256sum", id="here_string"),
+        ],
+    )
+    def test_checksum_only_literal_is_not_sc2_or_sc3(self, command: str) -> None:
+        findings = sc_mod.analyze(command + "\n", "setup.sh", "shell")
+
+        assert not [f for f in findings if f.rule_id in {"SC2", "SC3"}]
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            "sha256sum() { sh; }",
+            "sha256sum ( ) { sh; }",
+            "sha256sum" + " " * 17 + "() { sh; }",
+            "function sha256sum { sh; }",
+            "function sha256sum() { sh; }",
+            "function" + " " * 30 + "sha256sum { sh; }",
+            "'sha256sum'() { sh; }",
+            "alias sha256sum=sh",
+            "alias" + " " * 24 + "sha256sum=sh",
+            "alias 'sha256sum=sh'",
+            'alias "sha256sum=sh"',
+            "alias 'sha256sum'=sh",
+            'alias "sha256sum"=sh',
+            "alias -- sha256sum=sh",
+            "alias x=y sha256sum=sh",
+            r"alias sha256su\m=sh",
+            r"a\lias sha256su\m=sh",
+            "a'li'as sha256su'm'=sh",
+            "alias x=y sha'256'sum=sh",
+        ],
+    )
+    def test_shadowed_checksum_keeps_decoded_sc2(self, override: str) -> None:
+        content = override + f"\necho {_SHELL_FETCH_B64} | base64 -d | sha256sum\n"
+
+        findings = sc_mod.analyze(content, "setup.sh", "shell")
+
+        assert any(f.rule_id == "SC2" and f.matched_text == _SHELL_FETCH for f in findings)
+
+    @pytest.mark.parametrize(
+        "setup",
+        [
+            "eval setup",
+            "source aliases.sh",
+            ". aliases.sh",
+            "helper() { :; }",
+            "printf 'unclosed",
+        ],
+    )
+    def test_uncertain_command_identity_keeps_decoded_sc2(self, setup: str) -> None:
+        content = setup + f"\necho {_SHELL_FETCH_B64} | base64 -d | sha256sum\n"
+
+        findings = sc_mod.analyze(content, "setup.sh", "shell")
+
+        assert any(f.rule_id == "SC2" and f.matched_text == _SHELL_FETCH for f in findings)
+
+    @pytest.mark.parametrize("separator", ["\n", "; ", " && "])
+    @pytest.mark.parametrize("data_first", [True, False])
+    def test_only_executed_literal_produces_sc2(self, separator: str, data_first: bool) -> None:
+        data = f"echo {_SHELL_FETCH_B64} | base64 -d | sha256sum"
+        executed = "echo ZWNobyBoZWxsbw== | base64 -d | sh"
+        commands = [data, executed] if data_first else [executed, data]
+
+        findings = sc_mod.analyze(separator.join(commands), "setup.sh", "shell")
+
+        assert any(f.rule_id == "SC3" for f in findings)
+        assert not any(f.rule_id == "SC2" for f in findings)
+
+    @pytest.mark.parametrize("wrapper", ['eval "$(%s)"', "eval `%s`", "bash <(%s)"])
+    def test_execution_substitution_keeps_conservative_decoded_sc2(self, wrapper: str) -> None:
+        body = f"echo {_SHELL_FETCH_B64} | base64 -d | sha256sum; echo ZWNobyBoZWxsbwo= | base64 -d"
+
+        findings = sc_mod.analyze(wrapper % body, "setup.sh", "shell")
+
+        assert any(f.rule_id == "SC3" for f in findings)
+        assert any(f.rule_id == "SC2" and f.matched_text == _SHELL_FETCH for f in findings)
+
+    @pytest.mark.parametrize(
+        "command",
+        [
             pytest.param(f"echo {_SHELL_FETCH_B64} | base64 -d | sh", id="echo_base64"),
             pytest.param(
                 f"printf '%s' '{_SHELL_FETCH_B64.rstrip('=')}' | base64 --decode | bash",
@@ -2755,6 +2841,55 @@ class TestSupplyChainShellDecoding:
             pytest.param(f"echo {_SHELL_FETCH_HEX} | xxd -r -p | sh", id="echo_hex"),
             pytest.param(f"sh <(xxd -r -p <<< {_SHELL_FETCH_HEX})", id="here_string_hex"),
             pytest.param(f"echo -n {_SHELL_FETCH_B64} | openssl base64 -d -A | sh", id="openssl"),
+            pytest.param(f'eval "$(echo {_SHELL_FETCH_B64} | base64 -d)"', id="eval"),
+            pytest.param(f"eval `echo {_SHELL_FETCH_B64} | base64 -d`", id="eval_backticks"),
+            pytest.param(f'bash -c "$(echo {_SHELL_FETCH_B64} | base64 -d)"', id="bash_c"),
+            pytest.param(f"source <(base64 -d <<< '{_SHELL_FETCH_B64}')", id="source"),
+            pytest.param(f"bash < <(echo {_SHELL_FETCH_B64} | base64 -d)", id="redirected_process"),
+            pytest.param(
+                f'bash <<< "$(echo {_SHELL_FETCH_B64} | base64 -d)"', id="here_string_sub"
+            ),
+            pytest.param(
+                f'eval "$(echo ZWNobyBoZWxsbwo= | base64 -d; echo {_SHELL_FETCH_B64} | base64 -d)"',
+                id="second_decoder_in_substitution",
+            ),
+            pytest.param(
+                f"echo ZWNobyBoZWxsbw== | base64 -d | echo {_SHELL_FETCH_B64} | base64 -d | sh",
+                id="overlapping_decoded_pipeline",
+            ),
+            pytest.param(
+                f'eval "$(echo {_SHELL_FETCH_B64} | base64 -d | cat)"',
+                id="substitution_with_filter",
+            ),
+            pytest.param(
+                f'eval "$(echo {_SHELL_FETCH_B64} | base64 -d > >(cat))"',
+                id="substitution_with_redirected_filter",
+            ),
+            pytest.param(
+                f'eval "$(echo {_SHELL_FETCH_B64} | base64 -d > payload.sh; cat payload.sh)"',
+                id="substitution_with_file_round_trip",
+            ),
+            pytest.param(
+                f"echo {_SHELL_FETCH_B64} | base64 -d > payload.sh; sh payload.sh",
+                id="saved_then_executed",
+            ),
+            pytest.param(
+                f"echo {_SHELL_FETCH_B64} | base64 -d | tee payload.sh | sha256sum; sh payload.sh",
+                id="saved_before_checksum_then_executed",
+            ),
+            pytest.param(
+                f"echo {_SHELL_FETCH_B64} | base64 -d > payload.sh | sha256sum; sh payload.sh",
+                id="redirected_before_checksum_then_executed",
+            ),
+            pytest.param(
+                f"echo {_SHELL_FETCH_B64} | base64 -d | sha256sum-wrapper",
+                id="unknown_checksum_named_wrapper",
+            ),
+            pytest.param(
+                "eval \"$(echo ZWNobyBoZWxsbwo= | base64 -d; $(printf ''); "
+                f'echo {_SHELL_FETCH_B64} | base64 -d)"',
+                id="second_decoder_after_nested_substitution",
+            ),
         ],
     )
     def test_sc2_shell_literal_decoded_command(self, command: str) -> None:
@@ -2764,6 +2899,16 @@ class TestSupplyChainShellDecoding:
         assert len(decoded) == 1
         assert decoded[0].severity == Severity.HIGH
         assert decoded[0].location.start_line == 2
+
+    @pytest.mark.parametrize("wrapper", ['eval "$(%s)"', "bash <(%s)"])
+    def test_maximum_literal_retains_sc2_in_execution_substitution(self, wrapper: str) -> None:
+        script = (_SHELL_FETCH + "\n#").ljust(12_288)
+        payload = base64.b64encode(script.encode()).decode()
+        assert len(payload) == sc_mod._MAX_SHELL_LITERAL_CHARS
+
+        findings = sc_mod.analyze(wrapper % f"echo {payload} | base64 -d", "setup.sh", "shell")
+
+        assert any(f.rule_id == "SC2" and f.matched_text.startswith(_SHELL_FETCH) for f in findings)
 
     def test_sc3_benign_decoded_payload_is_not_sc2(self) -> None:
         payload = base64.b64encode(b"echo hello").decode()
@@ -2840,6 +2985,12 @@ class TestSupplyChainShellDecoding:
                 {"SC2"},
                 id="newline_ends_stage",
             ),
+            pytest.param(
+                r"a\lias sha256su\m=sh; "
+                f"echo {_SHELL_FETCH_B64} | base64 -d | sha256sum",
+                {"SC2"},
+                id="fragmented_alias",
+            ),
         ],
     )
     def test_shell_decode_in_hook_config(self, command: str, expected: set[str]) -> None:
@@ -2910,6 +3061,10 @@ class TestSupplyChainShellDecoding:
         "content",
         [
             pytest.param("echo QUFB | base64 -d " * 12_000, id="decoders_without_sink"),
+            pytest.param(
+                f"echo {_SHELL_FETCH_B64} | base64 -d | sha256sum\n" * 2_000,
+                id="repeated_checksum_pipelines",
+            ),
             pytest.param("eval $(echo " * 20_000 + "base64 -d", id="unclosed_substitutions"),
             pytest.param("eval $(" + "a " * 128_000 + "base64 -d", id="long_substitution"),
             pytest.param("echo " + "A" * 256_000 + " | base64 -d | sh", id="long_literal"),

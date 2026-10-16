@@ -1,6 +1,6 @@
 ### 2.13.0 (Unreleased)
 ### Security and blocking fixes
-* Selected release based on v2.12.0; includes 49 PRs, with #743 included through #734.
+* Selected release based on v2.12.0; includes 55 PRs, with #743 included through #734.
 * Reads SKILL.md metadata correctly when the file starts with an invisible encoding marker. (#471)
 * Detects text-direction control characters that can disguise code in bundled scripts, not just Markdown. (#473)
 * Marks recursive scan coverage as incomplete when linked skill folders are deliberately skipped. (#499)
@@ -28,6 +28,7 @@
 * Attaches AI review decisions to the correct findings and distinguishes disagreement from missing or failed reviews. (#702)
 * Recognizes safely decodable shell printf escapes without incorrectly marking analysis incomplete. (#704)
 * Detects sensitive data passed to urllib opener requests, including inline opener calls. (#721)
+* Displays untrusted names, filenames and findings literally in terminal reports, preventing markup crashes and spoofing. (#725)
 * Rejects scan output that points to the input file, including symbolic or hard links, preventing accidental overwrites. (#729)
 * Prevents untrusted names and findings from inserting fake headings, rows or HTML into batch Markdown reports. (#733)
 * Displays untrusted skill names and errors literally in batch terminals so markup and control characters cannot spoof the output. (#734)
@@ -47,6 +48,9 @@
 * Detects encoded shell payloads that are decoded and executed. (#786)
 * Requires approval for external Pi scan inputs and blocks file-reading YARA includes. (#791)
 * Separates local and referenced-content caches so baseline suppression cannot use the wrong file. (#792)
+* Keeps real disk content separate from archive members with colliding paths and reports failed coverage for ambiguous paths. (#793)
+* Inspects readable instructions hidden behind binary prefixes while preserving benign PDF/GIF and XMP handling and explicit limits for referenced or executable binaries. (#794)
+* Inspects untrusted OMS signing metadata and decoded payloads, preserving raw evidence and incomplete coverage on parsing failures. (#795)
 * Reports malformed LLM responses as incomplete analysis instead of successful empty results. (#796)
 * Tracks sensitive-data flow by function scope, avoiding collisions between unrelated variable names. (#799)
 * Keeps intentionally excluded files separate from failed analyzer work in coverage reports. (#802)
@@ -54,6 +58,7 @@
 * Keep static-only scans independent of inactive LLM provider settings while retaining strict provider checks for LLM-enabled scans.
 * Bound TypeScript declaration matching so malformed files cannot stall scans; timed-out checks leave the files eligible for executable analysis.
 * Counts only the bytecode walk’s own CPU time toward its processing limit, while retaining the overall scan deadline. Waiting for other analyzers no longer makes clean scans incomplete. (#828)
+* Avoids execution warnings for simple decode-to-checksum pipelines and preserves disk-versus-archive error locations when paths collide. (#844)
 * Enable CI and label-gated publishing for the selected v2.13.0 release branch.
 ---
 ### 2.12.0 (Unreleased)

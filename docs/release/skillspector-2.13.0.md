@@ -2,7 +2,7 @@
 
 ## Summary
 
-This release selectively backports security hardening, blocking scan fixes, and executable Python support onto v2.12.0. It includes 51 selected PRs; #743 is included through #734. It does not include every change merged into main since v2.12.0.
+This release selectively backports security hardening, blocking scan fixes, and executable Python support onto v2.12.0. It includes 55 selected PRs; #743 is included through #734. It does not include every change merged into main since v2.12.0.
 
 ## Compatibility notes
 
@@ -58,6 +58,8 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - [#791](https://github.com/NVIDIA/SkillSpector/pull/791): Requires approval for external Pi scan inputs and blocks file-reading YARA includes.
 - [#792](https://github.com/NVIDIA/SkillSpector/pull/792): Separates local and referenced-content caches so baseline suppression cannot use the wrong file.
 - [#793](https://github.com/NVIDIA/SkillSpector/pull/793): Prevents real disk paths from being overwritten by archive members with the same virtual path. Collisions retain the real content and report failed coverage.
+- [#794](https://github.com/NVIDIA/SkillSpector/pull/794): Inspects readable instructions hidden behind binary file prefixes while keeping ordinary PDF/GIF assets and XMP metadata from producing false alarms. Referenced or executable binaries still report their inspection limits.
+- [#795](https://github.com/NVIDIA/SkillSpector/pull/795): Treats OMS signing bundles as untrusted input, inspecting decoded metadata and preserving raw evidence and incomplete coverage when parsing fails.
 - [#796](https://github.com/NVIDIA/SkillSpector/pull/796): Reports malformed LLM responses as incomplete analysis instead of successful empty results.
 
 ### Blocking and regression fixes
@@ -72,6 +74,9 @@ This release selectively backports security hardening, blocking scan fixes, and 
 - [#748](https://github.com/NVIDIA/SkillSpector/pull/748): Switches NVIDIA Build’s default from retired GLM-5.2 to GLM-5.3 while preserving explicit model overrides.
 - [#799](https://github.com/NVIDIA/SkillSpector/pull/799): Tracks sensitive-data flow by function scope, avoiding collisions between unrelated variable names.
 - [#802](https://github.com/NVIDIA/SkillSpector/pull/802): Keeps intentionally excluded files separate from failed analyzer work in coverage reports.
+
+- [#828](https://github.com/NVIDIA/SkillSpector/pull/828): Counts the bytecode walk’s own CPU time toward its processing limit, so waiting behind concurrent analyzers does not make clean scans incomplete. The overall scan deadline still applies.
+- [#844](https://github.com/NVIDIA/SkillSpector/pull/844): Avoids execution warnings for simple decode-to-checksum pipelines while retaining warnings for executable or redirected payloads. Keeps disk and archive error locations distinct when paths collide.
 
 ### Executable Python support
 

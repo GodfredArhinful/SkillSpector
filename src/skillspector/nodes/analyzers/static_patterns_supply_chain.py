@@ -66,6 +66,7 @@ from skillspector.inspection_ledger import (
 from skillspector.logging_config import get_logger
 from skillspector.models import AnalyzerFinding, Finding, Location, Severity
 from skillspector.state import (
+    MAX_WORKFLOW_SECONDS,
     AnalyzerNodeResponse,
     SkillspectorState,
     transitive_note_truncation,
@@ -3381,6 +3382,8 @@ _SC8_BYTECODE_SUFFIXES = (".pyc", ".pyo")
 MAX_SC8_DISCOVERED_ENTRIES = 10_000
 MAX_SC8_DIRECTORY_ENTRIES = 10_000
 MAX_SC8_TRAVERSAL_DEPTH = 64
+# Processing budget, measured with ``time.thread_time()`` so that time spent
+# waiting for the GIL behind concurrently running analyzers does not count.
 MAX_SC8_ANALYSIS_SECONDS = 5.0
 MAX_SC8_FINDINGS = 10_000
 MAX_SC8_LIMITATIONS = 256
@@ -3415,7 +3418,14 @@ def _scan_shipped_bytecode(
     timeout_seconds: float | None = None,
     max_findings: int | None = None,
 ) -> _ShippedBytecodeScanResult:
-    """Discover shipped bytecode with deterministic aggregate resource bounds."""
+    """Discover shipped bytecode with deterministic aggregate resource bounds.
+
+    Analyzers run concurrently in one process, so the walk can spend most of
+    its wall-clock time waiting for the GIL. The processing budget therefore
+    counts only this thread's CPU time. Wall-clock time is bounded by the
+    remaining workflow deadline (``timeout_seconds``), or by the full workflow
+    limit for callers outside a workflow.
+    """
     findings: list[Finding] = []
     limitations: list[_SupplementalLimitation] = []
     if not skill_path or not isinstance(skill_path, str):
@@ -3425,10 +3435,11 @@ def _scan_shipped_bytecode(
         return _ShippedBytecodeScanResult(findings, limitations)
 
     started_at = time.monotonic()
-    runtime_limit = max(0.0, MAX_SC8_ANALYSIS_SECONDS)
-    if timeout_seconds is not None:
-        runtime_limit = min(runtime_limit, max(0.0, timeout_seconds))
-    deadline = started_at + runtime_limit
+    active_started_at = time.thread_time()
+    active_limit = max(0.0, MAX_SC8_ANALYSIS_SECONDS)
+    wall_clock_limit = max(
+        0.0, MAX_WORKFLOW_SECONDS if timeout_seconds is None else timeout_seconds
+    )
     requested_finding_limit = MAX_SC8_FINDINGS if max_findings is None else max_findings
     finding_limit = max(0, min(requested_finding_limit, MAX_SC8_FINDINGS))
     discovered_entries = 0
@@ -3452,15 +3463,20 @@ def _scan_shipped_bytecode(
         )
 
     def runtime_exhausted(relative_directory: str) -> bool:
-        now = time.monotonic()
-        if now < deadline:
+        wall_clock_elapsed = max(0.0, time.monotonic() - started_at)
+        active_elapsed = max(0.0, time.thread_time() - active_started_at)
+        if wall_clock_elapsed >= wall_clock_limit:
+            observed_seconds, limit_seconds = wall_clock_elapsed, wall_clock_limit
+        elif active_elapsed >= active_limit:
+            observed_seconds, limit_seconds = active_elapsed, active_limit
+        else:
             return False
         add_limitation(
             _SupplementalLimitation(
                 path=scope_path(relative_directory),
                 reason=LedgerReason.RUNTIME_LIMIT,
-                observed_seconds=max(0.0, now - started_at),
-                limit_seconds=runtime_limit,
+                observed_seconds=observed_seconds,
+                limit_seconds=limit_seconds,
             )
         )
         return True

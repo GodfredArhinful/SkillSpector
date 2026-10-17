@@ -409,12 +409,21 @@ _GLUED_INVALID_PYTHON = (
     [
         pytest.param("SKILL.md", _GLUED, id="prose"),
         pytest.param("notes.txt", _GLUED, id="text"),
-        pytest.param("SKILL.md", _GLUED_INVALID_PYTHON, id="prose-section-sign"),
-        pytest.param("scripts/check.py", _GLUED_INVALID_PYTHON, id="invalid-python"),
     ],
 )
 def test_glued_marker_outside_proven_python_still_fails_closed(path: str, content: str) -> None:
     _assert_partial_marker_text(_ledger(path, content))
+
+
+def test_invalid_python_never_receives_marker_ownership() -> None:
+    # The selected 2.13 release does not include unrelated section-sign marker
+    # hardening from main. Its existing syntax-error accounting still prevents
+    # malformed Python from borrowing host ownership.
+    result = _ledger("scripts/check.py", _GLUED_INVALID_PYTHON)
+    assert result["findings"] == []
+    event = result["inspection_ledger"][0]
+    assert event["outcome"] is LedgerOutcome.PARTIAL
+    assert event["reason_code"] is LedgerReason.SYNTAX_ERROR
 
 
 def test_glued_bare_string_statements_in_a_proven_module_are_complete() -> None:

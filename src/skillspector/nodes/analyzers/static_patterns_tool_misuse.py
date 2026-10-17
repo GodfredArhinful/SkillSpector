@@ -44,7 +44,7 @@ from skillspector.artifacts import (
 from skillspector.logging_config import get_logger
 from skillspector.models import AnalyzerFinding, Finding, Location, Severity
 from skillspector.python_ast import ParsedPythonFile, parse_python_source
-from skillspector.python_tokens import PythonLiteralSpans
+from skillspector.python_tokens import PythonLiteralSpans, python_string_value_bounds_allowed
 from skillspector.python_tokens import python_literal_spans as _python_literal_spans
 from skillspector.python_tokens import python_string_body as _python_string_body
 from skillspector.security_reconstruction import validated_json_string_spans
@@ -2111,11 +2111,11 @@ def _has_shell_command_word_exhaustion(
         ):
             comment = python_source.comment(start) if python_source is not None else None
             if comment is None:
-                # Host code after a Python string's closing quote is not shell
-                # text, so a command in the string takes operands only from
-                # the rest of the string's value, including literals
-                # concatenated with it. A value that code can still extend,
-                # for example with ``%`` or ``.format``, stays partial.
+                # A proven string value can bound this check only when the
+                # module has no recognized shell path that could execute a
+                # later transformation or concatenation. Ambiguous shell
+                # uses and locally extensible values retain the original
+                # whole-source incomplete-inspection fallback.
                 value = (
                     python_source.string_value(start, parsed.end)
                     if python_source is not None
@@ -2598,11 +2598,18 @@ class _PythonSourceOwnership:
     these decisions. Invalid or ambiguous source keeps every conservative bound.
     """
 
-    def __init__(self, content: str, check_runtime: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        content: str,
+        check_runtime: Callable[[], None],
+        python_import_check: Callable[[Callable[[], None]], bool] | None = None,
+    ) -> None:
+        self._python_import_check = python_import_check
         self._content = content
         self._check_runtime = check_runtime
         self._spans: PythonLiteralSpans | None = None
         self._spans_computed = False
+        self._string_value_bounds_allowed: bool | None = None
         self._cached_word_start = -1
         self._cached_word_end = -1
 
@@ -2648,6 +2655,17 @@ class _PythonSourceOwnership:
         owner = self._owner(start)
         content = self._content
         if spans is None or owner is None or content[owner[0]] == "#":
+            return None
+        # A literal may flow to a later shell call after concatenation or
+        # transformation. Its lexical boundary alone cannot prove that the
+        # original whole-source operand evidence is irrelevant.
+        if self._string_value_bounds_allowed is None:
+            self._string_value_bounds_allowed = python_string_value_bounds_allowed(
+                content, self._check_runtime
+            ) and (
+                self._python_import_check is None or self._python_import_check(self._check_runtime)
+            )
+        if not self._string_value_bounds_allowed:
             return None
         body_start, body_end = _python_string_body(content, *owner)
         if start >= body_end:
@@ -5025,16 +5043,24 @@ def _markdown_shell_text(
     return projected
 
 
+USES_PYTHON_IMPORT_BOUNDS = True
+
+
 def has_bounded_parse_exhaustion(
     content: str,
     check_runtime: Callable[[], None],
     *,
     file_type: str = "shell",
     complete_context: bool = True,
+    python_import_check: Callable[[Callable[[], None]], bool] | None = None,
 ) -> bool:
     """Return whether a destructive rm command exceeded the parser's span contract."""
     exhausted = _has_bounded_parse_exhaustion(
-        content, check_runtime, file_type=file_type, complete_context=complete_context
+        content,
+        check_runtime,
+        file_type=file_type,
+        complete_context=complete_context,
+        python_import_check=python_import_check,
     )
     if not exhausted or file_type != "markdown" or not complete_context:
         return exhausted
@@ -5054,6 +5080,7 @@ def _has_bounded_parse_exhaustion(
     *,
     file_type: str,
     complete_context: bool = True,
+    python_import_check: Callable[[Callable[[], None]], bool] | None = None,
     word_apostrophes: bool = False,
 ) -> bool:
     # PowerShell source can invoke another shell with an executable command
@@ -5068,7 +5095,7 @@ def _has_bounded_parse_exhaustion(
     if file_type == "python" and complete_context:
         # Only a complete module can prove Python token ownership. A fragment
         # may begin inside a string and would invert code and literal bytes.
-        python_source = _PythonSourceOwnership(content, check_runtime)
+        python_source = _PythonSourceOwnership(content, check_runtime, python_import_check)
     if file_type == "markdown":
         if complete_context:
             json_strings = validated_json_string_spans(content, check_runtime)

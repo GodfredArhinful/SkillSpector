@@ -1,5 +1,21 @@
 # Analysis Resource Bounds
 
+## Python string-value and bundled-import bounds
+
+Python string delimiters alone do not prove that later code cannot extend a
+command. The optional string-value completeness proof retains the original
+whole-source operand fallback around recognized shell execution, dynamic module
+access, reflection, and ambiguous subprocess modes.
+
+For bundled helpers, the proof uses only the scanner's in-memory component
+inventory and file cache. It follows selected named functions and their local
+dependencies, and separately checks module and ancestor-package initialization.
+It checks at most 64 files, 16 import levels, 2,000,000 source characters and
+40,000 visited syntax nodes per caller proof, sharing the artifact deadline.
+Missing or ambiguous local targets, import cycles, unsupported callable shapes,
+and exhausted bounds retain the original parser fallback. Interrupted proofs
+are not cached. External imports remain outside this bounded context.
+
 SkillSpector applies deterministic resource ceilings to untrusted skill bundles. A ceiling is a
 safety boundary, not an allowlist and not evidence that the portion examined was clean. When a
 relevant ceiling is reached, the scanner records the limitation and reports partial analysis.

@@ -4,6 +4,7 @@
 * Recognize possessive Markdown prose without weakening inspection of executable shell text. (#849)
 * Retain incomplete inspection when report-shaped strings can reach recognized shell execution, including through bundled helpers or module initialization.
 * Retain conservative shell inspection instead of failing the analyzer when a deeply nested bundled Python expression exceeds the optional import proof's serialization limit.
+* Report P2 hidden instructions only from text inside a single HTML comment, so visible text between comments or after `--!>`, `<!-->` or `<!--->`, and words such as `target`, `POSTGRES` or `SYSTEMATIC`, no longer count as hidden instructions. Camel-case and run-together directives stay detected. (#452)
 * Exclude the release workflow's uv build cache from source distributions.
 ---
 ### 2.13.0 (Unreleased)

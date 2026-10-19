@@ -2,7 +2,9 @@
 
 This patch release is based on the published v2.13.0 maintenance branch. It
 corrects false incomplete-analysis reports for ordinary Python report strings,
-quoted script text, regular expressions, and possessive Markdown prose.
+quoted script text, regular expressions, and possessive Markdown prose, and
+false P2 hidden-instruction findings that spanned visible text between HTML
+comments.
 
 ## Selected changes
 
@@ -20,6 +22,12 @@ quoted script text, regular expressions, and possessive Markdown prose.
 - Deep expressions in bundled Python helpers retain conservative shell bounds
   when the optional import proof exceeds Python's serialization recursion limit,
   instead of causing an analyzer failure.
+- [#452](https://github.com/NVIDIA/SkillSpector/pull/452) keeps each P2
+  hidden-instruction match inside one HTML comment, including the `--!>`,
+  `<!-->` and `<!--->` closers. Keywords match at word and identifier
+  boundaries, so visible text and words such as `target` or `POSTGRES` are not
+  reported as hidden instructions. Run-together directives such as
+  `PLEASEIGNOREPREVIOUSINSTRUCTIONS` remain detected.
 - Source distributions exclude the `.uv-cache` directory used by the release
   workflow.
 

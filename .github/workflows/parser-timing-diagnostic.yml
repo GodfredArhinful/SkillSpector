@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Temporary evidence-only branch. No pull_request or release trigger.
+name: Isolated 2.13.1 binary timing diagnostic
+
+on:
+  push:
+    branches: ["codex/diagnostic-2131-c18d972"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-binary-timing-c18d972
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.10.12"
+  PYTHON_VERSION: "3.12.3"
+  CANDIDATE_SHA: "c18d97262f1503efb2c57632054a607298b56e24"
+
+jobs:
+  compare-binary-timing:
+    if: github.repository == 'NVIDIA/SkillSpector' && github.ref == 'refs/heads/codex/diagnostic-2131-c18d972'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require only the reviewed diagnostic additions
+        run: |
+          git merge-base --is-ancestor "$CANDIDATE_SHA" HEAD
+          git diff --exit-code "$CANDIDATE_SHA" -- . \
+            ':!.github/workflows/parser-timing-diagnostic.yml' \
+            ':!scripts/diagnose_binary_timing.py'
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+          enable-cache: false
+      - name: Prepare frozen dependencies and pinned source snapshots
+        run: |
+          uv sync --frozen --all-extras --python "$PYTHON_VERSION"
+          .venv/bin/python scripts/diagnose_binary_timing.py prepare \
+            --repository "$GITHUB_WORKSPACE" \
+            --candidate "$CANDIDATE_SHA" \
+            --output "$RUNNER_TEMP/parser-timing-c18d972"
+      - name: Run the fixed public-candidate-candidate-public comparison offline
+        run: |
+          sudo --non-interactive unshare --net -- \
+            runuser -u "$(id -un)" -- \
+            "$GITHUB_WORKSPACE/.venv/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/diagnose_binary_timing.py" run \
+            --output "$RUNNER_TEMP/parser-timing-c18d972"
+      - name: Preserve every result including assertion failures and timeouts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binary-timing-c18d972-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/parser-timing-c18d972/identity.json
+            ${{ runner.temp }}/parser-timing-c18d972/results/
+          if-no-files-found: warn
+          retention-days: 14

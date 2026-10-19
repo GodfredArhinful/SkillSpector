@@ -305,7 +305,16 @@ def test_import_budget_exhaustion_retains_fallback(monkeypatch):
     )
 
 
-def test_deep_bundled_expression_preserves_shell_fallback_without_analyzer_failure():
+@pytest.mark.parametrize(
+    "helper",
+    [
+        "constant = " + "+".join(["1"] * 500) + "\ndef output(value):\n    print(value)\n",
+        "def output(value=" + "+".join(["1"] * 1100) + "):\n    print(value)\n",
+        "def output(value) -> " + "+".join(["1"] * 1100) + ":\n    print(value)\n",
+    ],
+    ids=["module-expression", "function-default", "return-annotation"],
+)
+def test_deep_bundled_expression_preserves_shell_fallback_without_analyzer_failure(helper):
     files = {
         "caller.py": (
             "from helpers import output\n"
@@ -315,11 +324,9 @@ def test_deep_bundled_expression_preserves_shell_fallback_without_analyzer_failu
             'command += " -rf /"\n'
             "output(command)\n"
         ),
-        # Valid Python with only about 1 KiB of source can exceed the AST
-        # unparser's recursion limit while remaining within the parse budget.
-        "helpers.py": "constant = "
-        + "+".join(["1"] * 500)
-        + "\ndef output(value):\n    print(value)\n",
+        # Valid Python with only a few KiB of source can exceed optional AST
+        # traversal limits while remaining within the parse budget.
+        "helpers.py": helper,
     }
     assert not PythonImportBounds(list(files), files).allows(
         "caller.py", files["caller.py"], lambda: None

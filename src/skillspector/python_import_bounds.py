@@ -99,7 +99,10 @@ class PythonImportBounds:
             # The ownership helper has already bounded and validated this parse.
             with _PYTHON_OWNERSHIP_PARSE_LOCK, warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                tree = ast.parse(source)
+                try:
+                    tree = ast.parse(source)
+                except RecursionError:
+                    return False
             check_runtime()
             active.add(key)
             # Importing pkg.helper also initializes each bundled ancestor
@@ -214,7 +217,13 @@ class PythonImportBounds:
                             type_comment=statement.type_comment,
                             type_params=getattr(statement, "type_params", []),
                         )
-                        selected.append(ast.fix_missing_locations(stub))
+                        try:
+                            selected.append(ast.fix_missing_locations(stub))
+                        except RecursionError:
+                            # Defaults and annotations can be valid, deeply
+                            # nested expressions. Exhausting this optional AST
+                            # traversal grants no import proof.
+                            return False
                     else:
                         selected.append(statement)
                 # A top-level call or escaped callback can initialize an

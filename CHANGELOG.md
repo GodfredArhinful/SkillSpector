@@ -3,6 +3,7 @@
 * Preserve Python and Perl host-language ownership when checking embedded shell text, so ordinary regexes, quoted script text, and report strings do not falsely exhaust the shell parser. (#778, #784, #849)
 * Recognize possessive Markdown prose without weakening inspection of executable shell text. (#849)
 * Retain incomplete inspection when report-shaped strings can reach recognized shell execution, including through bundled helpers or module initialization.
+* Retain conservative shell inspection instead of failing the analyzer when a deeply nested bundled Python expression exceeds the optional import proof's serialization limit.
 * Exclude the release workflow's uv build cache from source distributions.
 ---
 ### 2.13.0 (Unreleased)

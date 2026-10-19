@@ -17,6 +17,9 @@ quoted script text, regular expressions, and possessive Markdown prose.
   The check covers recognized local execution and a bounded set of bundled
   helpers, including import-time initialization. It does not lower findings
   or suppress an incomplete scan.
+- Deep expressions in bundled Python helpers retain conservative shell bounds
+  when the optional import proof exceeds Python's serialization recursion limit,
+  instead of causing an analyzer failure.
 - Source distributions exclude the `.uv-cache` directory used by the release
   workflow.
 
@@ -42,6 +45,7 @@ Exact, version-bound finding baselines must be regenerated and reviewed for
 validate the published wheel against their original inputs and baseline before
 activating the upgrade.
 
-Preparing or merging this source change does not itself publish an artifact.
-Publication remains a separate maintainer action through the existing
-label-gated release workflow.
+Merging a release PR into `yashraj/v2.13.0-base` with the `release:publish` label
+already present triggers the existing workflow to publish the GitHub `v2.13.1`
+release with wheel and source-distribution assets. Without that label, merging
+does not publish a release. This workflow does not publish to PyPI.

@@ -319,10 +319,18 @@ class PythonImportBounds:
                 if nodes_seen > _MAX_IMPORT_NODES:
                     return False
                 scope_nodes.append(node)
-            if depth and not python_string_value_bounds_allowed(
-                ast.unparse(scope), check_runtime, allow_dynamic_subprocess=False
-            ):
-                return False
+            if depth:
+                try:
+                    scope_source = ast.unparse(scope)
+                except RecursionError:
+                    # A small, valid module can still exceed the unparser's
+                    # recursion limit. This optional proof must retain the
+                    # conservative shell bounds instead of failing analysis.
+                    return False
+                if not python_string_value_bounds_allowed(
+                    scope_source, check_runtime, allow_dynamic_subprocess=False
+                ):
+                    return False
             for node in scope_nodes:
                 check_runtime()
                 if isinstance(node, ast.Import):

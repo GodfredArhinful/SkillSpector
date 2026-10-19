@@ -305,6 +305,35 @@ def test_import_budget_exhaustion_retains_fallback(monkeypatch):
     )
 
 
+def test_deep_bundled_expression_preserves_shell_fallback_without_analyzer_failure():
+    files = {
+        "caller.py": (
+            "from helpers import output\n"
+            'tool = "echo rm"\n'
+            'command = f"Report `{tool}`"\n'
+            'command = command.removeprefix("Report ")\n'
+            'command += " -rf /"\n'
+            "output(command)\n"
+        ),
+        # Valid Python with only about 1 KiB of source can exceed the AST
+        # unparser's recursion limit while remaining within the parse budget.
+        "helpers.py": "constant = "
+        + "+".join(["1"] * 500)
+        + "\ndef output(value):\n    print(value)\n",
+    }
+    assert not PythonImportBounds(list(files), files).allows(
+        "caller.py", files["caller.py"], lambda: None
+    )
+    result = static_runner.run_static_patterns_with_ledger(
+        {"components": list(files), "file_cache": files}, [tm]
+    )
+    event = next(event for event in result["inspection_ledger"] if event["path"] == "caller.py")
+    assert event["outcome"] is LedgerOutcome.PARTIAL
+    assert "analyzer_runtime_error" not in str(event)
+    helper = next(event for event in result["inspection_ledger"] if event["path"] == "helpers.py")
+    assert helper["outcome"] is LedgerOutcome.COMPLETED
+
+
 def test_interrupted_import_proof_is_not_cached():
     files = {
         "caller.py": "from helpers import output\n",

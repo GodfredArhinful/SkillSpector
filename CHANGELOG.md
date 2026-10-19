@@ -6,6 +6,10 @@
 * Retain conservative shell inspection instead of failing the analyzer when a deeply nested bundled Python expression exceeds the optional import proof's serialization limit.
 * Report P2 hidden instructions only from text inside a single HTML comment, so visible text between comments or after `--!>`, `<!-->` or `<!--->`, and words such as `target`, `POSTGRES` or `SYSTEMATIC`, no longer count as hidden instructions. Camel-case and run-together directives stay detected. (#452)
 * Exclude the release workflow's uv build cache from source distributions.
+### Backported security fixes
+* Reuse one line index for tool-misuse finding context, so files with thousands of tool-misuse matches are no longer re-read in full for each new finding line, and stop the TM1–TM4 checks and the Perl print helper when the per-file static analysis time limit is reached instead of only after the whole file is scanned. (#790)
+* Keep core findings and findings from completed batches when the contributed batch scanner's non-English gap-fill pass fails part-way, and report the skill as incomplete (`gap_fill_status: "incomplete"` with failure reasons, at least a CAUTION recommendation, and batch exit code 2) instead of treating the failed pass as complete with no findings. (#797)
+* Write report files (`scan`, `scan --recursive`, `scan --mcp-registry` and the contributed batch scanner's `--output`) and baselines atomically through an already-opened, no-follow parent directory, refusing symlinked or special-file destinations, symlinked parent directories and read-only existing files instead of writing through them. File output fails before analysis on platforms without these operations, such as Windows; `skillspector baseline -o -` writes the baseline as JSON to stdout instead. (#798)
 ---
 ### 2.13.0 (Unreleased)
 ### Security and blocking fixes

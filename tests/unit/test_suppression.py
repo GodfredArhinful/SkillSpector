@@ -1161,9 +1161,7 @@ def test_dump_baseline_keeps_destination_on_io_failure(
         raise error("injected I/O failure")
 
     if failure in {"write", "interrupt"}:
-        import tempfile
-
-        original = tempfile.NamedTemporaryFile
+        original = os.fdopen
 
         def failing_temporary_file(*args: object, **kwargs: object):
             temporary = original(*args, **kwargs)
@@ -1177,7 +1175,7 @@ def test_dump_baseline_keeps_destination_on_io_failure(
             temporary.write = partial_write
             return temporary
 
-        monkeypatch.setattr(tempfile, "NamedTemporaryFile", failing_temporary_file)
+        monkeypatch.setattr(os, "fdopen", failing_temporary_file)
     elif failure == "sync":
         monkeypatch.setattr(os, "fsync", fail)
     else:
@@ -1282,7 +1280,11 @@ def test_dump_baseline_revalidates_destination_replaced_while_opening(
 
     def swapped_open(path, flags, *args, **kwargs):
         # A cooperating writer atomically publishes once, between lstat and open.
-        if Path(path) == output and replacement.exists():
+        if (
+            Path(path).name == output.name
+            and kwargs.get("dir_fd") is not None
+            and replacement.exists()
+        ):
             os.replace(replacement, output)
         return original_open(path, flags, *args, **kwargs)
 
@@ -1306,7 +1308,7 @@ def test_dump_baseline_rejects_destination_that_keeps_changing(
 
     def swapped_open(path, flags, *args, **kwargs):
         nonlocal swaps
-        if Path(path) == output:
+        if Path(path).name == output.name and kwargs.get("dir_fd") is not None:
             swaps += 1
             replacement = tmp_path / f"replacement-{swaps}.yaml"
             replacement.write_text(f"replacement {swaps}", encoding="utf-8")
@@ -1363,11 +1365,27 @@ def test_dump_baseline_preserves_read_only_destination(tmp_path: Path) -> None:
     output.write_text("existing baseline", encoding="utf-8")
     output.chmod(0o444)
 
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionError) as error:
         dump_baseline({"version": 2}, output)
 
+    assert str(output) in str(error.value)
     assert output.read_text(encoding="utf-8") == "existing baseline"
     assert list(tmp_path.iterdir()) == [output]
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() == 0, reason="requires unprivileged POSIX permissions"
+)
+def test_dump_baseline_parent_permission_error_names_output(tmp_path: Path) -> None:
+    output = tmp_path / "baseline.yaml"
+    tmp_path.chmod(0o555)
+    try:
+        with pytest.raises(PermissionError) as error:
+            dump_baseline({"version": 2}, output)
+        assert str(output) in str(error.value)
+        assert not output.exists()
+    finally:
+        tmp_path.chmod(0o700)
 
 
 @pytest.mark.parametrize("target_exists", [True, False])

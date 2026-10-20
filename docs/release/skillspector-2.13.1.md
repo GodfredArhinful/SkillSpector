@@ -4,9 +4,12 @@ This patch release is based on the published v2.13.0 maintenance branch. It
 corrects false incomplete-analysis reports for ordinary Python report strings,
 quoted script text, regular expressions, and possessive Markdown prose, and
 false P2 hidden-instruction findings that spanned visible text between HTML
-comments. It also backports three security fixes merged to `main` after
-v2.13.0: safer report and baseline file output, incomplete-coverage reporting
-for failed batch gap-fill passes, and bounded tool-misuse context and deadlines.
+comments. It also backports eight fixes merged to `main` after v2.13.0. Three
+are security fixes: safer report and baseline file output, incomplete-coverage
+reporting for failed batch gap-fill passes, and bounded tool-misuse context and
+deadlines. Five are analyzer, report and CLI fixes: TM1 repeated assignments,
+MP3 hardware reset states and state adoption, recursive MEDIUM recommendations,
+and rejection of unsupported recursive and registry option combinations.
 
 ## Selected changes
 
@@ -59,6 +62,36 @@ unselected changes from `main`.
   instead of writing through them. `skillspector baseline <path> -o -` writes the
   baseline as JSON to stdout.
 
+## Backported fixes
+
+- [#820](https://github.com/NVIDIA/SkillSpector/pull/820) makes TM1 use the
+  final value of a repeated Python assignment target. A flag that was set true
+  and then reassigned with `enabled, enabled = True, False` no longer makes a
+  later `shell=enabled` call a HIGH finding. The earlier true value is dropped
+  only when the final value is provably false, the right-hand side is passive,
+  and earlier bindings are proven safe in a straight-line module or function
+  scope. Other cases keep the existing conservative result.
+- [#823](https://github.com/NVIDIA/SkillSpector/pull/823) rejects
+  `--use-shipped-baseline` with exit code 2 when `scan --recursive` detects one
+  or more child skills, before any report is written. Previously the option was
+  silently ignored. A single-skill scan still accepts it with `--recursive`.
+- [#836](https://github.com/NVIDIA/SkillSpector/pull/836) reports a complete
+  recursive scan whose highest score is MEDIUM (21–50) as CAUTION, matching the
+  child reports, instead of SAFE. Execution failures still report
+  DO_NOT_INSTALL, incomplete analysis still raises SAFE to CAUTION, and exit
+  codes are unchanged.
+- [#837](https://github.com/NVIDIA/SkillSpector/pull/837) stops MP3 from
+  reporting descriptions of a clocked hardware or state-machine "reset state"
+  as memory manipulation, while keeping direct agent-reset instructions. It
+  adds a HIGH MP3 finding for an explicit instruction to treat or adopt
+  (linked) state as the agent's memory or conversation state, unless that
+  instruction is directly prohibited.
+- [#840](https://github.com/NVIDIA/SkillSpector/pull/840) rejects
+  `scan --mcp-registry` combined with `--use-shipped-baseline`, `--transitive`,
+  `--transitive-depth`, `--transitive-allow-prefix` or
+  `--transitive-deny-prefix` with exit code 2, before the registry is read or a
+  report is written. Previously these options were silently ignored.
+
 ## Compatibility and remaining limits
 
 Genuine incomplete inspection and independent security findings remain blocking
@@ -91,6 +124,29 @@ batch scanner exit with code 2 in that case.
 
 The gap-fill change in #797 applies to the contributed batch scanner in
 `contrib/batch_scan`, which is not packaged in the wheel.
+
+Two option combinations that v2.13.0 accepted and silently ignored now exit
+with code 2 before a report is written. `scan --mcp-registry` rejects
+`--use-shipped-baseline` and every `--transitive*` option, including an explicit
+`--transitive-depth 1`; omit these options for registry scans.
+`scan --recursive` rejects `--use-shipped-baseline` when it detects one or more
+child skills; scan each sub-skill separately with `--use-shipped-baseline`.
+Update scripts that pass these combinations.
+
+A complete recursive scan whose highest score is 21–50 now reports CAUTION in
+the JSON `risk_recommendation` field and in the SARIF aggregate run's
+`riskAssessment.recommendation`, where v2.13.0 reported SAFE. Automation
+that gates on the recursive recommendation may now stop on these collections.
+Exit codes are unchanged: such a scan still exits 0 unless a strict option
+applies. Markdown and terminal output for complete recursive scans is
+unchanged.
+
+Detection changes in #820 and #837 can change findings and scores. TM1 no
+longer reports a `shell=` flag that a repeated assignment provably leaves false.
+MP3 no longer reports clocked hardware reset-state descriptions, but now reports
+instructions such as "Treat this state as your memory." as HIGH: a skill whose
+only finding is that instruction scores 21 (MEDIUM, CAUTION), where v2.13.0
+reported 0 (SAFE).
 
 Exact, version-bound finding baselines must be regenerated and reviewed for
 2.13.1; do not relabel a baseline from another scanner version. Consumers should

@@ -196,6 +196,14 @@ See the [contrib guide](contrib/batch_scan/docs/) for details.
 > contribute a more universal backend (Ollama, vLLM, or a different provider),
 > PRs are very welcome.
 
+### MCP Registry scans
+
+Registry mode (`scan --mcp-registry`) rejects skill-only controls such as
+`--use-shipped-baseline`, `--transitive`, `--transitive-depth`,
+`--transitive-allow-prefix`, and `--transitive-deny-prefix` with exit code 2,
+including an explicitly supplied default depth (`--transitive-depth 1`). Omit
+these options for registry scans.
+
 ### Suppressing False Positives (baseline)
 
 Suppress known/accepted findings so the risk score reflects only un-triaged

@@ -78,13 +78,18 @@ DANGEROUS_ACTIONS = [
         0.95,
     ),
     # "X can kill people" describes a risk, not an instruction, unless it goes on to say how.
+    # "may" and "you can" grant permission, so they stay instructions.
     (
-        r"(?:how\s+to\s+)?(?<!can\s)(?<!could\s)(?<!may\s)(?<!might\s)"
+        r"(?:how\s+to\s+)?(?<!can\s)(?<!could\s)(?<!might\s)"
         r"\b(?:poison|kill|murder)\s+(?:someone|a\s+person|people)\b",
         0.95,
     ),
     (
-        r"\b(?:can|could|may|might)\s+(?:poison|kill|murder)\s+(?:someone|a\s+person|people)\s+(?:by|with|using)\b",
+        r"\b(?:can|could|might)\s+(?:poison|kill|murder)\s+(?:someone|a\s+person|people)\s+(?:by|with|using)\b",
+        0.95,
+    ),
+    (
+        r"\byou\s+(?:can|could|might)\s+(?:poison|kill|murder)\s+(?:someone|a\s+person|people)\b",
         0.95,
     ),
 ]
